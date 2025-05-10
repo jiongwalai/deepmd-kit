@@ -193,6 +193,8 @@ class TypeEmbedNet:
             and (nvnmd_cfg.restore_descriptor or nvnmd_cfg.restore_fitting_net)
         ):
             self.type_embedding_net_variables = nvnmd_cfg.get_dp_init_weights()
+        elif nvnmd_cfg.enable:
+            self.use_tebd_bias = True
         with tf.variable_scope(name, reuse=reuse):
             ebd_type = embedding_net(
                 ebd_type,
