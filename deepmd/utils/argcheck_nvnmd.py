@@ -27,7 +27,7 @@ def nvnmd_args(fold_subdoc: bool = False) -> Argument:
     doc_quantize_fitting_net = "enable the quantizatioin of fitting_net"
     args = [
         Argument("version", int, optional=False, default=0, doc=doc_version),
-        Argument("device", str, optional=False, default="none", doc=doc_device),
+        Argument("device", str, optional=False, default="uv9p", doc=doc_device),
         Argument("max_nnei", int, optional=False, default=128, doc=doc_max_nnei),
         Argument("net_size", int, optional=False, default=128, doc=doc_net_size_file),
         Argument("map_file", str, optional=False, default="none", doc=doc_map_file),
