@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import logging
 import os
+import copy
+import json
 from typing import (
     Optional,
 )
@@ -62,15 +64,20 @@ def normalized_input(fn, PATH_CNN, CONFIG_CNN):
     jdata_nvnmd["config_file"] = CONFIG_CNN
     jdata_nvnmd_ = f.get(jdata, "nvnmd", jdata_nvnmd)
     jdata_nvnmd = f.update(jdata_nvnmd_, jdata_nvnmd)
+    # seed
+    with open(fn, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+    descriptor_seed = data.get('model', {}).get('descriptor', {}).get('seed', 1)
+    fitting_net_seed = data.get('model', {}).get('fitting_net', {}).get('seed', 1)
     # model
     jdata_model = {
         "descriptor": {
-            "seed": 1,
+            "seed": descriptor_seed,
             "sel": jdata_nvnmd_["sel"],
             "rcut": jdata_nvnmd_["rcut"],
             "rcut_smth": jdata_nvnmd_["rcut_smth"],
         },
-        "fitting_net": {"seed": 1},
+        "fitting_net": {"seed": fitting_net_seed},
         "type_map": [],
     }
     jdata_model["type_map"] = f.get(jdata_nvnmd_, "type_map", [])
@@ -126,7 +133,7 @@ def train_nvnmd(
 ):
     # test input
     if not os.path.exists(INPUT):
-        log.warning(f"The input script {INPUT} does not exist")
+        log.warning("The input script %s does not exist" % (INPUT))
     # STEP1
     PATH_CNN = "nvnmd_cnn"
     CONFIG_CNN = os.path.join(PATH_CNN, "config.npy")
@@ -141,7 +148,7 @@ def train_nvnmd(
         FioDic().save(INPUT_CNN, jdata)
         nvnmd_cfg.save(CONFIG_CNN)
         # train cnn
-        jdata = jdata_cmd_train.copy()
+        jdata = copy.deepcopy(jdata_cmd_train)
         jdata["INPUT"] = INPUT_CNN
         jdata["log_path"] = LOG_CNN
         jdata["init_model"] = init_model
@@ -150,7 +157,7 @@ def train_nvnmd(
         train(**jdata)
         tf.reset_default_graph()
         # freeze
-        jdata = jdata_cmd_freeze.copy()
+        jdata = copy.deepcopy(jdata_cmd_freeze)
         jdata["checkpoint_folder"] = PATH_CNN
         jdata["output"] = FRZ_MODEL_CNN
         jdata["nvnmd_weight"] = WEIGHT_CNN
@@ -180,14 +187,14 @@ def train_nvnmd(
         FioDic().save(INPUT_QNN, jdata)
         nvnmd_cfg.save(CONFIG_QNN)
         # train qnn
-        jdata = jdata_cmd_train.copy()
+        jdata = copy.deepcopy(jdata_cmd_train)
         jdata["INPUT"] = INPUT_QNN
         jdata["log_path"] = LOG_QNN
         jdata["skip_neighbor_stat"] = skip_neighbor_stat
         train(**jdata)
         tf.reset_default_graph()
         # freeze
-        jdata = jdata_cmd_freeze.copy()
+        jdata = copy.deepcopy(jdata_cmd_freeze)
         jdata["checkpoint_folder"] = PATH_QNN
         jdata["output"] = FRZ_MODEL_QNN
         jdata["nvnmd_weight"] = WEIGHT_QNN

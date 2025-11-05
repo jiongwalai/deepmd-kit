@@ -1,3 +1,5 @@
+import copy
+
 # SPDX-License-Identifier: LGPL-3.0-or-later
 jdata_sys = {"debug": False}
 
@@ -119,8 +121,8 @@ jdata_config_v0 = {
 }
 
 # change the configuration accordng to the max_nnei
-jdata_config_v0_ni128 = jdata_config_v0.copy()
-jdata_config_v0_ni256 = jdata_config_v0.copy()
+jdata_config_v0_ni128 = copy.deepcopy(jdata_config_v0)
+jdata_config_v0_ni256 = copy.deepcopy(jdata_config_v0)
 jdata_config_v0_ni256["ctrl"] = {
     "MAX_NNEI": 256,
     "NSTDM": 128,
@@ -150,6 +152,7 @@ jdata_config_v1 = {
         # embedding net size
         "M1": "neuron[-1]",
         "M2": "axis_neuron",
+        "M3": 2,
         "SEL": 128,
         "NNODE_FEAS": "(1, neuron)",
         "nlayer_fea": "len(neuron)",
@@ -200,7 +203,7 @@ jdata_config_v1 = {
         "NSEL": "NSTDM",
         "NSADV": "NSTDM+1",
         "VERSION": 1,
-        "SUB_VERSION": 1,
+        "SUB_VERSION": 2,
     },
     "nbit": {
         # general
@@ -243,6 +246,7 @@ jdata_config_v1 = {
         "NBIT_CFG": 64,
         "NBIT_NET": 72,
         "NBIT_MODEL_HEAD": 32,
+        "NBIT_NSTEP": 8,
         # nbit for mapt-version
         "NBIT_IDX_S2G": 9,
         "NBIT_NEIB": 8,
@@ -251,18 +255,18 @@ jdata_config_v1 = {
 }
 
 # change the configuration accordng to the max_nnei
-jdata_config_v1_ni128 = jdata_config_v1.copy()
-jdata_config_v1_ni256 = jdata_config_v1.copy()
+jdata_config_v1_ni128 = copy.deepcopy(jdata_config_v1)
+jdata_config_v1_ni256 = copy.deepcopy(jdata_config_v1)
 jdata_config_v1_ni256["ctrl"] = {
     "MAX_NNEI": 256,
-    "NSTDM": 128,
+    "NSTDM": 64,
     "NSTDM_M1": 32,
-    "NSTDM_M2": 4,
+    "NSTDM_M2": 2,
     "NSTDM_M1X": 8,
     "NSEL": "NSTDM",
     "NSADV": "NSTDM+1",
     "VERSION": 1,
-    "SUB_VERSION": 1,
+    "SUB_VERSION": 2,
 }
 jdata_config_v1_ni256["nbit"]["NBIT_NEIB"] = 9
 
@@ -283,6 +287,7 @@ jdata_deepmd_input_v0 = {
     },
     "nvnmd": {
         "version": 0,
+        "device": "vu9p",
         "max_nnei": 128,  # 128 or 256
         "net_size": 128,
         "config_file": "none",
@@ -323,8 +328,8 @@ jdata_deepmd_input_v0 = {
     },
 }
 
-jdata_deepmd_input_v0_ni128 = jdata_deepmd_input_v0.copy()
-jdata_deepmd_input_v0_ni256 = jdata_deepmd_input_v0.copy()
+jdata_deepmd_input_v0_ni128 = copy.deepcopy(jdata_deepmd_input_v0)
+jdata_deepmd_input_v0_ni256 = copy.deepcopy(jdata_deepmd_input_v0)
 jdata_deepmd_input_v0_ni256["nvnmd"]["max_nnei"] = 256
 
 jdata_deepmd_input_v1 = {
@@ -333,6 +338,8 @@ jdata_deepmd_input_v1 = {
             "seed": 1,
             "type": "se_atten",
             "stripped_type_embedding": True,
+            "smooth_type_embdding": True,
+            "set_davg_zero": False,
             "sel": 128,
             "rcut": 7.0,
             "rcut_smth": 0.5,
@@ -349,6 +356,7 @@ jdata_deepmd_input_v1 = {
     },
     "nvnmd": {
         "version": 1,
+        "device": "vu9p",
         "max_nnei": 128,  # 128 or 256
         "net_size": 128,
         "config_file": "none",
@@ -389,9 +397,10 @@ jdata_deepmd_input_v1 = {
     },
 }
 
-jdata_deepmd_input_v1_ni128 = jdata_deepmd_input_v1.copy()
-jdata_deepmd_input_v1_ni256 = jdata_deepmd_input_v1.copy()
+jdata_deepmd_input_v1_ni128 = copy.deepcopy(jdata_deepmd_input_v1)
+jdata_deepmd_input_v1_ni256 = copy.deepcopy(jdata_deepmd_input_v1)
 jdata_deepmd_input_v1_ni256["nvnmd"]["max_nnei"] = 256
+
 
 NVNMD_WELCOME = (
     r" _   _  __     __  _   _   __  __   ____  ",

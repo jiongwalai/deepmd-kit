@@ -29,7 +29,7 @@ from deepmd.nvnmd.descriptor.se_atten import (
     build_davg_dstd,
     build_op_descriptor,
     check_switch_range,
-    descrpt2r4,
+    build_recovered,
     filter_GR2D,
     filter_lower_R42GR,
 )
@@ -651,6 +651,15 @@ class DescrptSeAtten(DescrptSeA):
         inputs_i = inputs
         inputs_i = tf.reshape(inputs_i, [-1, self.ndescrpt])
         type_i = -1
+
+        # descrpt and recovered_switch for nvnmd 
+        if nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor:
+            inputs_i, self.recovered_switch = build_recovered(
+                        inputs_i, self.t_avg, self.t_std,
+                        self.atype_nloc, natoms[0], self.ntypes,
+                        self.rcut_r_smth, self.filter_precision
+                        )
+        
         if len(self.exclude_types):
             mask = self.build_type_exclude_mask_mixed(
                 self.exclude_types,
@@ -680,8 +689,7 @@ class DescrptSeAtten(DescrptSeA):
                 )
             else:
                 inputs_i *= mask
-        if nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor:
-            inputs_i = descrpt2r4(inputs_i, atype)
+        
         layer, qmat = self._filter(
             inputs_i,
             type_i,
@@ -1105,6 +1113,7 @@ class DescrptSeAtten(DescrptSeA):
                                 inputs_i,
                                 atype,
                                 self.nei_type_vec,
+                                self.recovered_switch
                             )
                         elif nvnmd_cfg.restore_descriptor:
                             self.embedding_net_variables = (

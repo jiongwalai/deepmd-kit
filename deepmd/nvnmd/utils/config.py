@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import logging
 
+import copy
 import numpy as np
 
 from deepmd.nvnmd.data.data import (
@@ -43,9 +44,10 @@ class NvnmdConfig:
 
     def __init__(self, jdata: dict):
         self.version = 0
+        self.device = "vu9p"
         self.enable = False
         self.map = {}
-        self.config = jdata_config_v0.copy()
+        self.config = copy.deepcopy(jdata_config_v0)
         self.save_path = "nvnmd/config.npy"
         self.weight = {}
         self.init_from_jdata(jdata)
@@ -56,6 +58,7 @@ class NvnmdConfig:
             return None
 
         self.version = jdata["version"]
+        self.device = jdata["device"]
         self.max_nnei = jdata["max_nnei"]
         self.net_size = jdata["net_size"]
         self.map_file = jdata["map_file"]
@@ -66,7 +69,6 @@ class NvnmdConfig:
         self.restore_fitting_net = jdata["restore_fitting_net"]
         self.quantize_descriptor = jdata["quantize_descriptor"]
         self.quantize_fitting_net = jdata["quantize_fitting_net"]
-
         # load data
         if self.enable:
             self.map = FioDic().load(self.map_file, {})
@@ -116,7 +118,7 @@ class NvnmdConfig:
                 if "MAX_NNEI" not in jdata["ctrl"].keys():
                     jdata["ctrl"]["MAX_NNEI"] = 128
                 self.init_config_by_version(
-                    jdata["ctrl"]["VERSION"], jdata["ctrl"]["MAX_NNEI"]
+                    jdata["ctrl"]["VERSION"], self.max_nnei #这里载入输入脚本定义的NI
                 )
         #
         self.config = FioDic().update(jdata, self.config)
@@ -135,22 +137,25 @@ class NvnmdConfig:
         log.debug("#Set nvnmd version as %d " % self.version)
         if self.version == 0:
             if self.max_nnei == 128:
-                self.jdata_deepmd_input = jdata_deepmd_input_v0_ni128.copy()
-                self.config = jdata_config_v0_ni128.copy()
+                self.jdata_deepmd_input = copy.deepcopy(jdata_deepmd_input_v0_ni128)
+                self.config = copy.deepcopy(jdata_config_v0_ni128)
             elif self.max_nnei == 256:
-                self.jdata_deepmd_input = jdata_deepmd_input_v0_ni256.copy()
-                self.config = jdata_config_v0_ni256.copy()
+                self.jdata_deepmd_input = copy.deepcopy(jdata_deepmd_input_v0_ni256)
+                self.config = copy.deepcopy(jdata_config_v0_ni256)
             else:
                 log.error("The max_nnei only can be set as 128|256 for version 0")
         if self.version == 1:
             if self.max_nnei == 128:
-                self.jdata_deepmd_input = jdata_deepmd_input_v1_ni128.copy()
-                self.config = jdata_config_v1_ni128.copy()
+                self.jdata_deepmd_input = copy.deepcopy(jdata_deepmd_input_v1_ni128)
+                self.config = copy.deepcopy(jdata_config_v1_ni128)
             elif self.max_nnei == 256:
-                self.jdata_deepmd_input = jdata_deepmd_input_v1_ni256.copy()
-                self.config = jdata_config_v1_ni256.copy()
-            else:
-                log.error("The max_nnei only can be set as 128|256 for version 1")
+                self.jdata_deepmd_input = copy.deepcopy(jdata_deepmd_input_v1_ni256)
+                self.config = copy.deepcopy(jdata_config_v1_ni256)
+            elif self.max_nnei < 256:
+                self.jdata_deepmd_input = copy.deepcopy(jdata_deepmd_input_v1_ni256) # 去除了NI限制
+                self.config = copy.deepcopy(jdata_config_v1_ni256)
+            else: 
+                log.error("The max_nnei only can be set less then 256")
 
     def init_net_size(self):
         r"""Initialize net_size."""
@@ -180,7 +185,7 @@ class NvnmdConfig:
             jdata["SEL"] = (jdata["sel"] + [0, 0, 0, 0])[0:4]
             for s in jdata["sel"]:
                 if s > self.max_nnei:
-                    log.error("The sel cannot be greater than the max_nnei")
+                    log.error(f"The sel ({jdata['sel']}) cannot be greater than the max_nnei ({self.max_nnei})")
                     exit(1)
             jdata["NNODE_FEAS"] = [1] + jdata["neuron"]
             jdata["nlayer_fea"] = len(jdata["neuron"])
@@ -193,12 +198,11 @@ class NvnmdConfig:
             jdata["ntype"] = len(jdata["sel"])
             jdata["ntypex"] = 1 if (jdata["same_net"]) else jdata["ntype"]
         if self.version == 1:
-            # embedding
             jdata["M1"] = jdata["neuron"][-1]
             jdata["M2"] = jdata["axis_neuron"]
-            jdata["SEL"] = jdata["sel"]
+            # embedding
             if jdata["sel"] > self.max_nnei:
-                log.error("The sel cannot be greater than the max_nnei")
+                log.error(f"The sel ({jdata['sel']}) cannot be greater than the max_nnei ({self.max_nnei})")
                 exit(1)
             jdata["NNODE_FEAS"] = [1] + jdata["neuron"]
             jdata["nlayer_fea"] = len(jdata["neuron"])
@@ -207,6 +211,40 @@ class NvnmdConfig:
             jdata["NI"] = self.max_nnei
             jdata["NIDP"] = int(jdata["sel"])
             jdata["NIX"] = 2 ** int(np.ceil(np.log2(jdata["NIDP"] / 1.5)))
+            if jdata["sel"] <= 128:
+                jdata["SEL"] = 128
+                if self.device == "vu13p": 
+                    jdata["NSTEP"] = 0
+                else:
+                    jdata["NSTEP"] = 0
+            elif 128 < jdata["sel"] <= 160:
+                jdata["SEL"] = 160
+                if self.device == "vu13p":  
+                    jdata["NSTEP"] = 8
+                else:
+                    jdata["NSTEP"] = 16
+                # jdata["NSTEP"] = jdata["NI"]/2 - self.config["ctrl"]["NSTDM"]
+            elif 160 < jdata["sel"] <= 192:
+                jdata["SEL"] = 192
+                if self.device == "vu13p":
+                    jdata["NSTEP"] = 16
+                else:
+                    jdata["NSTEP"] = 32
+            elif 192 < jdata["sel"] <= 224:
+                jdata["SEL"] = 224
+                if self.device == "vu13p":
+                    jdata["NSTEP"] = 24
+                else:
+                    jdata["NSTEP"] = 48
+            elif 224 < jdata["sel"] <= 256:
+                jdata["SEL"] = 256
+                if self.device == "vu13p":
+                    jdata["NSTEP"] = 32
+                else:
+                    jdata["NSTEP"] = 64                               
+            if jdata["sel"] > 256:
+                log.error(f"The sel ({jdata['sel']}) should be less than 256")
+                exit(1)
             # type
             jdata["ntype"] = jdata["ntype"]
         return jdata
@@ -245,6 +283,16 @@ class NvnmdConfig:
             jdata["NSEL"] = jdata["NSTDM"] * ntype_max
             jdata["VERSION"] = 0
         if self.version == 1:
+            if self.device == "vu13p":
+                jdata["NSTDM"] = 32
+                jdata["NSTDM_M1"] = jdata["NSTDM"]//2
+                jdata["NSTDM_M2"] = 2
+                jdata["MAX_NNEI"] = 256
+            elif self.device == "vu9p": 
+                jdata["NSTDM"] = 64
+                jdata["NSTDM_M1"] = jdata["NSTDM"]//2
+                jdata["NSTDM_M2"] = 2
+                jdata["MAX_NNEI"] = 256
             jdata["NSADV"] = jdata["NSTDM"] + 1
             jdata["NSEL"] = jdata["NSTDM"]
             jdata["VERSION"] = 1
@@ -276,6 +324,9 @@ class NvnmdConfig:
         else:
             self.save_path = file_name
         self.update_config()
+        # fix debug config_file not correspond
+        #load_config = FioDic().load(self.config_file, self.config)
+        #self.init_from_config(load_config)
         FioDic().save(file_name, self.config)
 
     def set_ntype(self, ntype):
@@ -301,8 +352,8 @@ class NvnmdConfig:
         nvnmd_cfg.save()
         # check
         log.info(f"the range of s is [{smin}, {smax}]")
-        if smax - smin > 16.0:
-            log.warning("the range of s is over the limit (smax - smin) > 16.0")
+        if smax - smin > 32.0:
+            log.warning("the range of s is over the limit (smax - smin) > 32.0")
             log.warning(
                 "Please reset the rcut_smth as a bigger value to fix this warning"
             )
@@ -339,6 +390,7 @@ class NvnmdConfig:
         r"""Generate `nvnmd` in input script."""
         jdata = self.jdata_deepmd_input["nvnmd"]
         jdata["net_size"] = self.net_size
+        jdata["device"] = self.device
         jdata["max_nnei"] = self.max_nnei
         jdata["config_file"] = self.config_file
         jdata["weight_file"] = self.weight_file
@@ -364,7 +416,7 @@ class NvnmdConfig:
 
     def get_deepmd_jdata(self):
         r"""Generate input script with member element one by one."""
-        jdata = self.jdata_deepmd_input.copy()
+        jdata = copy.deepcopy(self.jdata_deepmd_input)
         jdata["model"] = self.get_model_jdata()
         jdata["nvnmd"] = self.get_nvnmd_jdata()
         jdata["learning_rate"] = self.get_learning_rate_jdata()

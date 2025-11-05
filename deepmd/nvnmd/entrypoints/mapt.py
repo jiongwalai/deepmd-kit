@@ -50,7 +50,7 @@ class MapTable:
     :math:`h_{ji} = \frac{s(r_{ji})}{r_{ji}}`, and
     :math:`\mathcal{G}_{ji}` is embedding matrix.
 
-    The mapping funciton can be define as:
+    The mapping function can be define as:
 
     | :math:`y = f(x) = y_{k} + (x - x_{k}) * dy_{k}`
     | :math:`y_{k} = f(x_{k})`
@@ -91,17 +91,16 @@ class MapTable:
         # Gs + 1, Gt + 0
         # 1 : xyz_scatter = xyz_scatter * two_embd + two_embd   ;
         # Gs + 0, Gt + 1
-        self.Gs_Gt_mode = 1
+        # 2 : xyz_scatter = xyz_scatter * two_embd * recovered_switch + xyz_scatter;
+        # Gs + 0, Gt + 0
+        self.Gs_Gt_mode = 2
 
         nvnmd_cfg.init_from_jdata(jdata)
 
     def build_map(self):
-        if self.Gs_Gt_mode == 0:
-            self.shift_Gs = 1
-            self.shift_Gt = 0
-        if self.Gs_Gt_mode == 1:
+        if self.Gs_Gt_mode == 2:
             self.shift_Gs = 0
-            self.shift_Gt = 1
+            self.shift_Gt = 0
         #
         M = nvnmd_cfg.dscp["M1"]
         if nvnmd_cfg.version == 0:
@@ -137,12 +136,21 @@ class MapTable:
             ndim,
             1,
         )
+        dic_map1["k"], dic_map1["k_grad"] = self.build_map_coef(
+            cfg_u2s,
+            u,
+            dic_u2s["k"],
+            dic_u2s["k_grad"],
+            dic_u2s["k_grad_grad"],
+            ndim,
+            1,
+        )
         ## s2g
         dic_map2 = {}
         s = np.reshape(dic_s2g["s"], [-1])
         cfg_s2g = [
             [s[0], s[256], s[1] - s[0], 0, 256],
-            [s[0], s[4096], s[16] - s[0], 256, 512],
+            [s[0], s[8192], s[32] - s[0], 256, 512],
         ]
         dic_map2["g"], dic_map2["g_grad"] = self.build_map_coef(
             cfg_s2g,
@@ -391,14 +399,19 @@ class MapTable:
                 h = h / std[tt, 1]
                 sl.append(s)
                 hl.append(h)
-            return sl, hl
+            return sl, hl, sl
 
         if nvnmd_cfg.version == 1:
             s = vv / r__
             h = s / r__
+            kk = 1 - rmin * s
+            k = -kk * kk * kk + 1
+            k = tf.clip_by_value(k, 0.0, 1.0)
+
             s = tf.reshape(s, [-1, 1])
             h = tf.reshape(h, [-1, 1])
-            return [s], [h]
+            k = tf.reshape(k, [-1, 1])
+            return [s], [h], [k]
 
     def build_u2s_grad(self):
         r"""Build gradient of s with respect to u (r^2)."""
@@ -409,12 +422,15 @@ class MapTable:
         #
         dic_ph = {}
         dic_ph["u"] = tf.placeholder(tf.float64, [None, 1], "t_u")
-        dic_ph["s"], dic_ph["h"] = self.build_u2s(dic_ph["u"])
+        dic_ph["s"], dic_ph["h"], dic_ph["k"] = self.build_u2s(dic_ph["u"])
         dic_ph["s_grad"], dic_ph["s_grad_grad"] = self.build_grad(
             dic_ph["u"], dic_ph["s"], ndim, 1
         )
         dic_ph["h_grad"], dic_ph["h_grad_grad"] = self.build_grad(
             dic_ph["u"], dic_ph["h"], ndim, 1
+        )
+        dic_ph["k_grad"], dic_ph["k_grad_grad"] = self.build_grad(
+            dic_ph["u"], dic_ph["k"], ndim, 1
         )
         return dic_ph
 
@@ -456,6 +472,9 @@ class MapTable:
             res_dic["h"][tt][0] = 0
             res_dic["h_grad"][tt][0] = 0
             res_dic["h_grad_grad"][tt][0] = 0
+            res_dic["k"][tt][0] = 0
+            res_dic["k_grad"][tt][0] = 0
+            res_dic["k_grad_grad"][tt][0] = 0
             #
             res_dic2["s"][tt][0] = -avg[tt, 0] / std[tt, 0]
             res_dic2["s_grad"][tt][0] = 0
@@ -463,6 +482,13 @@ class MapTable:
             res_dic2["h"][tt][0] = 0
             res_dic2["h_grad"][tt][0] = 0
             res_dic2["h_grad_grad"][tt][0] = 0
+            res_dic2["k"][tt][0] = 0
+            res_dic2["k_grad"][tt][0] = 0
+            res_dic2["k_grad_grad"][tt][0] = 0
+            #
+            if nvnmd_cfg.version == 1:
+                res_dic["s"][tt][0] = 0
+                res_dic2["s"][tt][0] = 0
 
         sess.close()
         return res_dic, res_dic2
@@ -521,18 +547,15 @@ class MapTable:
         dic_ph = self.build_s2g_grad()
         sess = get_sess()
 
-        N = 4096
-        N2 = 16
+        N = 8192
+        N2 = 32
         log.info(f"the range of s is [{smin}, {smax}]")
         # check
-        if (smax - smin) > 16.0:
-            log.warning("the range of s is over the limit (smax - smin) > 16.0")
+        if (smax - smin) > 32.0:
+            log.warning("the range of s is over the limit (smax - smin) > 32.0")
         prec = N / N2
         # the lower limit of switch function
-        if nvnmd_cfg.version == 0:
-            smin_ = np.floor(smin * prec - 1) / prec
-        if nvnmd_cfg.version == 1:
-            smin_ = 0
+        smin_ = np.floor(smin * prec - 1) / prec
         #
         keys = list(dic_ph.keys())
         vals = list(dic_ph.values())
