@@ -1,14 +1,12 @@
 {
   "nvnmd": {
-    "version": 0,
-    "max_nnei": 128,
+    "version": 1,
+    "max_nnei": 256,
     "net_size": 128,
-    "sel": [
-      60,
-      60
-    ],
+    "sel": 256,
     "rcut": 6.0,
     "rcut_smth": 0.5,
+    "device": "vu13p",
     "type_map": [
       "Ge",
       "Te"
