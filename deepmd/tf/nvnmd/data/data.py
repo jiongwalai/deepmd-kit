@@ -155,7 +155,6 @@ jdata_config_v1 = {
         # embedding net size
         "M1": "neuron[-1]",
         "M2": "axis_neuron",
-        "M3": 2,
         "SEL": 128,
         "NNODE_FEAS": "(1, neuron)",
         "nlayer_fea": "len(neuron)",

@@ -650,42 +650,43 @@ class DescrptSeAtten(DescrptSeA):
         )  ## lammps will have error without this
         self._identity_tensors(suffix=suffix)
         if self.smooth:
-            self.sliced_avg = tf.reshape(
-                tf.slice(
-                    tf.reshape(self.t_avg, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
-                ),
-                [self.ntypes, 1],
-            )
-            self.sliced_std = tf.reshape(
-                tf.slice(
-                    tf.reshape(self.t_std, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
-                ),
-                [self.ntypes, 1],
-            )
-            self.avg_looked_up = tf.reshape(
-                tf.nn.embedding_lookup(self.sliced_avg, self.atype_nloc),
-                [-1, natoms[0], 1],
-            )
-            self.std_looked_up = tf.reshape(
-                tf.nn.embedding_lookup(self.sliced_std, self.atype_nloc),
-                [-1, natoms[0], 1],
-            )
-            self.recovered_r = (
-                tf.reshape(
+            if not (nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor):
+                self.sliced_avg = tf.reshape(
                     tf.slice(
-                        tf.reshape(self.descrpt_reshape, [-1, 4]), [0, 0], [-1, 1]
+                        tf.reshape(self.t_avg, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
                     ),
-                    [-1, natoms[0], self.sel_all_a[0]],
+                    [self.ntypes, 1],
                 )
-                * self.std_looked_up
-                + self.avg_looked_up
-            )
-            uu = 1 - self.rcut_r_smth * self.recovered_r
-            self.recovered_switch = -uu * uu * uu + 1
-            self.recovered_switch = tf.clip_by_value(self.recovered_switch, 0.0, 1.0)
-            self.recovered_switch = tf.cast(
-                self.recovered_switch, self.filter_precision
-            )
+                self.sliced_std = tf.reshape(
+                    tf.slice(
+                        tf.reshape(self.t_std, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
+                    ),
+                    [self.ntypes, 1],
+                )
+                self.avg_looked_up = tf.reshape(
+                    tf.nn.embedding_lookup(self.sliced_avg, self.atype_nloc),
+                    [-1, natoms[0], 1],
+                )
+                self.std_looked_up = tf.reshape(
+                    tf.nn.embedding_lookup(self.sliced_std, self.atype_nloc),
+                    [-1, natoms[0], 1],
+                )
+                self.recovered_r = (
+                    tf.reshape(
+                        tf.slice(
+                            tf.reshape(self.descrpt_reshape, [-1, 4]), [0, 0], [-1, 1]
+                        ),
+                        [-1, natoms[0], self.sel_all_a[0]],
+                    )
+                    * self.std_looked_up
+                    + self.avg_looked_up
+                )
+                uu = 1 - self.rcut_r_smth * self.recovered_r
+                self.recovered_switch = -uu * uu * uu + 1
+                self.recovered_switch = tf.clip_by_value(self.recovered_switch, 0.0, 1.0)
+                self.recovered_switch = tf.cast(
+                    self.recovered_switch, self.filter_precision
+                )
 
         self.dout, self.qmat = self._pass_filter(
             self.descrpt_reshape,
@@ -1170,7 +1171,7 @@ class DescrptSeAtten(DescrptSeA):
                                 inputs_i,
                                 atype,
                                 self.nei_type_vec,
-                                self.recovered_switch
+                                self.recovered_switch,
                             )
                         elif nvnmd_cfg.restore_descriptor:
                             self.embedding_net_variables = (

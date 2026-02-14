@@ -13,6 +13,7 @@ from deepmd.tf.env import (
 )
 from deepmd.tf.nvnmd.data.data import (
     jdata_deepmd_input_v0,
+    jdata_deepmd_input_v1_ni256,
     jdata_sys,
 )
 from deepmd.tf.nvnmd.utils.config import (
@@ -77,8 +78,12 @@ class Wrap:
         self.weight_file = weight_file
         self.map_file = map_file
         self.model_file = model_file
-
-        jdata = jdata_deepmd_input_v0["nvnmd"]
+        # init according to local file
+        loc_config = np.load(config_file,allow_pickle=True)
+        loc_version = loc_config[0]['ctrl']['VERSION']
+        loc_nstdm = loc_config[0]['ctrl']['NSTDM']
+        jdata = jdata_deepmd_input_v1_ni256["nvnmd"] if loc_version == 1 else jdata_deepmd_input_v0["nvnmd"]
+        jdata['device'] = 'vu13p' if loc_nstdm == 32 else 64
         jdata["config_file"] = config_file
         jdata["weight_file"] = weight_file
         jdata["map_file"] = map_file
@@ -248,6 +253,7 @@ class Wrap:
         version 1:
             [NBIT_IDX_S2G-1:0] SHIFT_IDX_S2G
             [NBIT_FLTE-1:0] NEXPO_DIV_NI
+            [NBIT_NSTEP-1:0] NSTEP
         """
         dscp = nvnmd_cfg.dscp
         nbit = nvnmd_cfg.nbit
@@ -404,6 +410,7 @@ class Wrap:
             bwc.append(bwct)
         #
         bfps, bbps = [], []
+        numdata = 4 if NSTDM == 32 else 2
         for ss in range(NSEL):
             tt = ss // NSTDM
             sc = ss % NSTDM
@@ -429,7 +436,7 @@ class Wrap:
                         for rr in range(nrs)
                         for cc in range(nc)
                     ]
-                    bbp += [bdc[ll][tt][sc * ncs * 0 + cc] for cc in range(ncs)]
+                    bbp += [''.join([bdc[ll][tt][sc * ncs * 0 + cc] for cc in range(ncs)]*numdata)] # fix bug-adjust to multi data
                     bbp += [bb[ll][tt][sc * ncs * 0 + cc] for cc in range(ncs)]
                 else:
                     # fp

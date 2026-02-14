@@ -56,7 +56,6 @@ class NvnmdConfig:
         r"""Initialize this class with `jdata` loaded from input script."""
         if jdata == {}:
             return None
-
         self.version = jdata["version"]
         self.device = jdata["device"]
         self.max_nnei = jdata["max_nnei"]
@@ -73,7 +72,6 @@ class NvnmdConfig:
         if self.enable:
             self.map = FioDic().load(self.map_file, {})
             self.weight = FioDic().load(self.weight_file, {})
-
             self.init_config_by_version(self.version, self.max_nnei)
             load_config = FioDic().load(self.config_file, self.config)
             self.init_from_config(load_config)
@@ -209,38 +207,39 @@ class NvnmdConfig:
             jdata["nlayer_fea"] = len(jdata["neuron"])
             jdata["same_net"] = 1 if jdata["type_one_side"] else 0
             # neighbor
-            jdata["NI"] = self.max_nnei
+            jdata["NI"] = jdata["sel"]
             jdata["NIDP"] = int(jdata["sel"])
             jdata["NIX"] = 2 ** int(np.ceil(np.log2(jdata["NIDP"] / 1.5)))
-            if jdata["sel"] <= 128:
-                if self.device == "vu13p": 
-                    jdata["NSTEP"] = 0
-                else:
-                    jdata["NSTEP"] = 0
-            elif 128 < jdata["sel"] <= 160:
-                if self.device == "vu13p":  
-                    jdata["NSTEP"] = 8
-                else:
-                    jdata["NSTEP"] = 16
-                # jdata["NSTEP"] = jdata["NI"]/2 - self.config["ctrl"]["NSTDM"]
-            elif 160 < jdata["sel"] <= 192:
-                if self.device == "vu13p":
-                    jdata["NSTEP"] = 16
-                else:
-                    jdata["NSTEP"] = 32
-            elif 192 < jdata["sel"] <= 224:
-                if self.device == "vu13p":
-                    jdata["NSTEP"] = 24
-                else:
-                    jdata["NSTEP"] = 48
-            elif 224 < jdata["sel"] <= 256:
-                if self.device == "vu13p":
-                    jdata["NSTEP"] = 32
-                else:
-                    jdata["NSTEP"] = 64                               
-            if jdata["sel"] > 256:
-                log.error(f"The sel ({jdata['sel']}) should be less than 256")
-                exit(1)
+            if self.version == 1:
+                if jdata["sel"] <= 128:
+                    if self.device == "vu13p": 
+                        jdata["NSTEP"] = 0
+                    else:
+                        jdata["NSTEP"] = 0
+                elif 128 < jdata["sel"] <= 160:
+                    if self.device == "vu13p":  
+                        jdata["NSTEP"] = 8
+                    else:
+                        jdata["NSTEP"] = 16
+                    # jdata["NSTEP"] = jdata["NI"]/2 - self.config["ctrl"]["NSTDM"]
+                elif 160 < jdata["sel"] <= 192:
+                    if self.device == "vu13p":
+                        jdata["NSTEP"] = 16
+                    else:
+                        jdata["NSTEP"] = 32
+                elif 192 < jdata["sel"] <= 224:
+                    if self.device == "vu13p":
+                        jdata["NSTEP"] = 24
+                    else:
+                        jdata["NSTEP"] = 48
+                elif 224 < jdata["sel"] <= 256:
+                    if self.device == "vu13p":
+                        jdata["NSTEP"] = 32
+                    else:
+                        jdata["NSTEP"] = 64                               
+                if jdata["sel"] > 256:
+                    log.error(f"The sel ({jdata['sel']}) should be less than 256")
+                    exit(1)
             # type
             jdata["ntype"] = jdata["ntype"]
         return jdata
@@ -320,9 +319,6 @@ class NvnmdConfig:
         else:
             self.save_path = file_name
         self.update_config()
-        # fix debug config_file not correspond
-        #load_config = FioDic().load(self.config_file, self.config)
-        #self.init_from_config(load_config)
         FioDic().save(file_name, self.config)
 
     def set_ntype(self, ntype):
