@@ -1,15 +1,13 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import logging
 import os
-import time
 from multiprocessing.dummy import (
     Pool,
 )
-from queue import (
-    Queue,
-)
-from threading import (
-    Thread,
+from typing import (
+    Any,
+    Optional,
+    Union,
 )
 
 import h5py
@@ -52,7 +50,7 @@ log = logging.getLogger(__name__)
 torch.multiprocessing.set_sharing_strategy("file_system")
 
 
-def setup_seed(seed) -> None:
+def setup_seed(seed: Union[int, list[int], tuple[int, ...]]) -> None:
     if isinstance(seed, (list, tuple)):
         mixed_seed = mix_entropy(seed)
     else:
@@ -82,11 +80,11 @@ class DpLoaderSet(Dataset):
 
     def __init__(
         self,
-        systems,
-        batch_size,
-        type_map,
-        seed=None,
-        shuffle=True,
+        systems: Union[str, list[str]],
+        batch_size: int,
+        type_map: Optional[list[str]],
+        seed: Optional[int] = None,
+        shuffle: bool = True,
     ) -> None:
         if seed is not None:
             setup_seed(seed)
@@ -94,7 +92,7 @@ class DpLoaderSet(Dataset):
             with h5py.File(systems) as file:
                 systems = [os.path.join(systems, item) for item in file.keys()]
 
-        def construct_dataset(system):
+        def construct_dataset(system: str) -> DeepmdDataSetForLoader:
             return DeepmdDataSetForLoader(
                 system=system,
                 type_map=type_map,
@@ -173,7 +171,9 @@ class DpLoaderSet(Dataset):
                 num_workers=0,  # Should be 0 to avoid too many threads forked
                 sampler=system_sampler,
                 collate_fn=collate_batch,
-                shuffle=(not (dist.is_available() and dist.is_initialized()))
+                shuffle=(
+                    not (dist.is_available() and dist.is_initialized())
+                )  # distributed sampler will do the shuffling by default
                 and shuffle,
             )
             self.dataloaders.append(system_dataloader)
@@ -185,7 +185,7 @@ class DpLoaderSet(Dataset):
             for item in self.dataloaders:
                 self.iters.append(iter(item))
 
-    def set_noise(self, noise_settings) -> None:
+    def set_noise(self, noise_settings: dict[str, Any]) -> None:
         # noise_settings['noise_type'] # "trunc_normal", "normal", "uniform"
         # noise_settings['noise'] # float, default 1.0
         # noise_settings['noise_mode'] # "prob", "fix_num"
@@ -198,13 +198,14 @@ class DpLoaderSet(Dataset):
     def __len__(self) -> int:
         return len(self.dataloaders)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         # log.warning(str(torch.distributed.get_rank())+" idx: "+str(idx)+" index: "+str(self.index[idx]))
-        try:
-            batch = next(self.iters[idx])
-        except StopIteration:
-            self.iters[idx] = iter(self.dataloaders[idx])
-            batch = next(self.iters[idx])
+        with torch.device("cpu"):
+            try:
+                batch = next(self.iters[idx])
+            except StopIteration:
+                self.iters[idx] = iter(self.dataloaders[idx])
+                batch = next(self.iters[idx])
         batch["sid"] = idx
         return batch
 
@@ -235,55 +236,7 @@ class DpLoaderSet(Dataset):
             )
 
 
-class BackgroundConsumer(Thread):
-    def __init__(self, queue, source) -> None:
-        super().__init__()
-        self.daemon = True
-        self._queue = queue
-        self._source = source  # Main DL iterator
-
-    def run(self) -> None:
-        for item in self._source:
-            self._queue.put(item)  # Blocking if the queue is full
-
-        # Signal the consumer we are done; this should not happen for DataLoader
-        self._queue.put(StopIteration())
-
-
-QUEUESIZE = 32
-
-
-class BufferedIterator:
-    def __init__(self, iterable) -> None:
-        self._queue = Queue(QUEUESIZE)
-        self._iterable = iterable
-        self._consumer = BackgroundConsumer(self._queue, self._iterable)
-        self._consumer.start()
-        self.last_warning_time = time.time()
-
-    def __iter__(self):
-        return self
-
-    def __len__(self) -> int:
-        return len(self._iterable)
-
-    def __next__(self):
-        start_wait = time.time()
-        item = self._queue.get()
-        wait_time = time.time() - start_wait
-        if (
-            wait_time > 1.0 and start_wait - self.last_warning_time > 15 * 60
-        ):  # Even for Multi-Task training, each step usually takes < 1s
-            log.warning(
-                f"Data loading is slow, waited {wait_time:.2f} seconds. Ignoring this warning for 15 minutes."
-            )
-            self.last_warning_time = start_wait
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-
-def collate_batch(batch):
+def collate_batch(batch: list[dict[str, Any]]) -> dict[str, Any]:
     example = batch[0]
     result = {}
     for key in example.keys():
@@ -303,7 +256,9 @@ def collate_batch(batch):
     return result
 
 
-def get_weighted_sampler(training_data, prob_style, sys_prob=False):
+def get_weighted_sampler(
+    training_data: Any, prob_style: str, sys_prob: bool = False
+) -> WeightedRandomSampler:
     if sys_prob is False:
         if prob_style == "prob_uniform":
             prob_v = 1.0 / float(training_data.__len__())
@@ -320,11 +275,15 @@ def get_weighted_sampler(training_data, prob_style, sys_prob=False):
     # training_data.total_batch is the size of one epoch, you can increase it to avoid too many  rebuilding of iterators
     len_sampler = training_data.total_batch * max(env.NUM_WORKERS, 1)
     with torch.device("cpu"):
-        sampler = WeightedRandomSampler(probs, len_sampler, replacement=True)
+        sampler = WeightedRandomSampler(
+            probs,
+            len_sampler,
+            replacement=True,
+        )
     return sampler
 
 
-def get_sampler_from_params(_data, _params):
+def get_sampler_from_params(_data: Any, _params: dict[str, Any]) -> Any:
     if (
         "sys_probs" in _params and _params["sys_probs"] is not None
     ):  # use sys_probs first

@@ -42,7 +42,7 @@ class SummaryPrinter(ABC):
         "Please read and cite:",
         "Wang, Zhang, Han and E, Comput.Phys.Comm. 228, 178-184 (2018)",
         "Zeng et al, J. Chem. Phys., 159, 054801 (2023)",
-        "Zeng et al, arxiv:2502.19161",
+        "Zeng et al, J. Chem. Theory Comput., 21, 4375-4385 (2025)",
         "See https://deepmd.rtfd.io/credits/ for details.",
     )
 
@@ -56,7 +56,7 @@ class SummaryPrinter(ABC):
         "build variant": GLOBAL_CONFIG["dp_variant"],
     }
 
-    def __call__(self):
+    def __call__(self) -> None:
         """Print build and current running cluster configuration summary."""
         nodename, nodelist = get_host_names()
         build_info = self.BUILD.copy()

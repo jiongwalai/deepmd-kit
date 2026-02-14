@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from typing import (
+    Any,
     Callable,
     Optional,
     Union,
@@ -63,7 +64,7 @@ from .repflows import (
 
 @BaseDescriptor.register("dpa3")
 class DescrptDPA3(BaseDescriptor, torch.nn.Module):
-    r"""The DPA-3 descriptor.
+    r"""The DPA3 descriptor[1]_.
 
     Parameters
     ----------
@@ -89,8 +90,17 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
         Whether to use electronic configuration type embedding.
     use_tebd_bias : bool, Optional
         Whether to use bias in the type embedding layer.
+    use_loc_mapping : bool, Optional
+        Whether to use local atom index mapping in training or non-parallel inference.
+        When True, local indexing and mapping are applied to neighbor lists and embeddings during descriptor computation.
     type_map : list[str], Optional
         A list of strings. Give the name to each type of atoms.
+
+    References
+    ----------
+    .. [1] Zhang, D., Peng, A., Cai, C. et al. Graph neural
+       network model for the era of large atomistic models.
+       arXiv preprint arXiv:2506.01686 (2025).
     """
 
     def __init__(
@@ -108,11 +118,12 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
         seed: Optional[Union[int, list[int]]] = None,
         use_econf_tebd: bool = False,
         use_tebd_bias: bool = False,
+        use_loc_mapping: bool = True,
         type_map: Optional[list[str]] = None,
     ) -> None:
         super().__init__()
 
-        def init_subclass_params(sub_data, sub_class):
+        def init_subclass_params(sub_data: Any, sub_class: Any) -> Any:
             if isinstance(sub_data, dict):
                 return sub_class(**sub_data)
             elif isinstance(sub_data, sub_class):
@@ -150,13 +161,20 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             fix_stat_std=self.repflow_args.fix_stat_std,
             optim_update=self.repflow_args.optim_update,
             smooth_edge_update=self.repflow_args.smooth_edge_update,
+            edge_init_use_dist=self.repflow_args.edge_init_use_dist,
+            use_exp_switch=self.repflow_args.use_exp_switch,
+            use_dynamic_sel=self.repflow_args.use_dynamic_sel,
+            sel_reduce_factor=self.repflow_args.sel_reduce_factor,
+            use_loc_mapping=use_loc_mapping,
             exclude_types=exclude_types,
             env_protection=env_protection,
             precision=precision,
             seed=child_seed(seed, 1),
+            trainable=trainable,
         )
 
         self.use_econf_tebd = use_econf_tebd
+        self.use_loc_mapping = use_loc_mapping
         self.use_tebd_bias = use_tebd_bias
         self.type_map = type_map
         self.tebd_dim = self.repflow_args.n_dim
@@ -168,6 +186,7 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             use_econf_tebd=self.use_econf_tebd,
             use_tebd_bias=use_tebd_bias,
             type_map=type_map,
+            trainable=trainable,
         )
         self.concat_output_tebd = concat_output_tebd
         self.precision = precision
@@ -254,7 +273,9 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
         """Returns the protection of building environment matrix."""
         return self.repflows.get_env_protection()
 
-    def share_params(self, base_class, shared_level, resume=False) -> None:
+    def share_params(
+        self, base_class: Any, shared_level: int, resume: bool = False
+    ) -> None:
         """
         Share the parameters of self to the base_class with shared_level during multitask training.
         If not start from checkpoint (resume is False),
@@ -278,7 +299,7 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             raise NotImplementedError
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat=None
+        self, type_map: list[str], model_with_new_type_stat: Optional[Any] = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
@@ -307,11 +328,11 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
         repflow["dstd"] = repflow["dstd"][remap_index]
 
     @property
-    def dim_out(self):
+    def dim_out(self) -> int:
         return self.get_dim_out()
 
     @property
-    def dim_emb(self):
+    def dim_emb(self) -> int:
         """Returns the embedding dimension g2."""
         return self.get_dim_emb()
 
@@ -362,7 +383,7 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
         data = {
             "@class": "Descriptor",
             "type": "dpa3",
-            "@version": 1,
+            "@version": 2,
             "ntypes": self.ntypes,
             "repflow_args": self.repflow_args.serialize(),
             "concat_output_tebd": self.concat_output_tebd,
@@ -373,6 +394,7 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             "trainable": self.trainable,
             "use_econf_tebd": self.use_econf_tebd,
             "use_tebd_bias": self.use_tebd_bias,
+            "use_loc_mapping": self.use_loc_mapping,
             "type_map": self.type_map,
             "type_embedding": self.type_embedding.embedding.serialize(),
         }
@@ -397,7 +419,7 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
     def deserialize(cls, data: dict) -> "DescrptDPA3":
         data = data.copy()
         version = data.pop("@version")
-        check_version_compatibility(version, 1, 1)
+        check_version_compatibility(version, 2, 1)
         data.pop("@class")
         data.pop("type")
         repflow_variable = data.pop("repflow_variable").copy()
@@ -408,7 +430,7 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             type_embedding
         )
 
-        def t_cvt(xx):
+        def t_cvt(xx: Any) -> torch.Tensor:
             return torch.tensor(xx, dtype=obj.repflows.prec, device=env.DEVICE)
 
         # deserialize repflow
@@ -433,7 +455,13 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
         nlist: torch.Tensor,
         mapping: Optional[torch.Tensor] = None,
         comm_dict: Optional[dict[str, torch.Tensor]] = None,
-    ):
+    ) -> tuple[
+        torch.Tensor,
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+    ]:
         """Compute the descriptor.
 
         Parameters
@@ -466,12 +494,16 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             The smooth switch function. shape: nf x nloc x nnei
 
         """
+        parallel_mode = comm_dict is not None
         # cast the input to internal precsion
         extended_coord = extended_coord.to(dtype=self.prec)
         nframes, nloc, nnei = nlist.shape
         nall = extended_coord.view(nframes, -1).shape[1] // 3
 
-        node_ebd_ext = self.type_embedding(extended_atype)
+        if not parallel_mode and self.use_loc_mapping:
+            node_ebd_ext = self.type_embedding(extended_atype[:, :nloc])
+        else:
+            node_ebd_ext = self.type_embedding(extended_atype)
         node_ebd_inp = node_ebd_ext[:, :nloc, :]
         # repflows
         node_ebd, edge_ebd, h2, rot_mat, sw = self.repflows(
@@ -486,10 +518,14 @@ class DescrptDPA3(BaseDescriptor, torch.nn.Module):
             node_ebd = torch.cat([node_ebd, node_ebd_inp], dim=-1)
         return (
             node_ebd.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
-            rot_mat.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
-            edge_ebd.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
-            h2.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
-            sw.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
+            rot_mat.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION)
+            if rot_mat is not None
+            else None,
+            edge_ebd.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION)
+            if edge_ebd is not None
+            else None,
+            h2.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION) if h2 is not None else None,
+            sw.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION) if sw is not None else None,
         )
 
     @classmethod

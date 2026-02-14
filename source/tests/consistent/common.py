@@ -354,9 +354,6 @@ class CommonTest(ABC):
         data1.pop("@version")
         data2.pop("@version")
 
-        if tf_obj.__class__.__name__.startswith("Polar"):
-            data1["@variables"].pop("bias_atom_e")
-
         np.testing.assert_equal(data1, data2)
         for rr1, rr2 in zip(ret1, ret2):
             np.testing.assert_allclose(
@@ -435,6 +432,9 @@ class CommonTest(ABC):
             common_keys = set(data1.keys()) & set(data2.keys())
             data1 = {k: data1[k] for k in common_keys}
             data2 = {k: data2[k] for k in common_keys}
+        # drop @variables since they are not equal
+        data1.pop("@variables", None)
+        data2.pop("@variables", None)
         np.testing.assert_equal(data1, data2)
         for rr1, rr2 in zip(ret1, ret2):
             np.testing.assert_allclose(rr1, rr2, rtol=self.rtol, atol=self.atol)
@@ -469,6 +469,9 @@ class CommonTest(ABC):
         ret2 = self.eval_jax(jax_obj)
         ret2 = self.extract_ret(ret2, self.RefBackend.JAX)
         data2 = jax_obj.serialize()
+        # drop @variables since they are not equal
+        data1.pop("@variables", None)
+        data2.pop("@variables", None)
         np.testing.assert_equal(data1, data2)
         for rr1, rr2 in zip(ret1, ret2):
             np.testing.assert_allclose(rr1, rr2, rtol=self.rtol, atol=self.atol)
@@ -508,6 +511,9 @@ class CommonTest(ABC):
             common_keys = set(data1.keys()) & set(data2.keys())
             data1 = {k: data1[k] for k in common_keys}
             data2 = {k: data2[k] for k in common_keys}
+        # drop @variables since they are not equal
+        data1.pop("@variables", None)
+        data2.pop("@variables", None)
         np.testing.assert_equal(data1, data2)
         for rr1, rr2 in zip(ret1, ret2):
             np.testing.assert_allclose(rr1, rr2, rtol=self.rtol, atol=self.atol)

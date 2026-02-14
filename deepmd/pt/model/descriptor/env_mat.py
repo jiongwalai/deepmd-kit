@@ -3,18 +3,20 @@
 import torch
 
 from deepmd.pt.utils.preprocess import (
+    compute_exp_sw,
     compute_smooth_weight,
 )
 
 
 def _make_env_mat(
-    nlist,
-    coord,
+    nlist: torch.Tensor,
+    coord: torch.Tensor,
     rcut: float,
     ruct_smth: float,
     radial_only: bool = False,
     protection: float = 0.0,
-):
+    use_exp_switch: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Make smooth environment matrix."""
     bsz, natoms, nnei = nlist.shape
     coord = coord.view(bsz, -1, 3)
@@ -33,7 +35,11 @@ def _make_env_mat(
     length = length + ~mask.unsqueeze(-1)
     t0 = 1 / (length + protection)
     t1 = diff / (length + protection) ** 2
-    weight = compute_smooth_weight(length, ruct_smth, rcut)
+    weight = (
+        compute_smooth_weight(length, ruct_smth, rcut)
+        if not use_exp_switch
+        else compute_exp_sw(length, ruct_smth, rcut)
+    )
     weight = weight * mask.unsqueeze(-1)
     if radial_only:
         env_mat = t0 * weight
@@ -43,16 +49,17 @@ def _make_env_mat(
 
 
 def prod_env_mat(
-    extended_coord,
-    nlist,
-    atype,
-    mean,
-    stddev,
+    extended_coord: torch.Tensor,
+    nlist: torch.Tensor,
+    atype: torch.Tensor,
+    mean: torch.Tensor,
+    stddev: torch.Tensor,
     rcut: float,
     rcut_smth: float,
     radial_only: bool = False,
     protection: float = 0.0,
-):
+    use_exp_switch: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Generate smooth environment matrix from atom coordinates and other context.
 
     Args:
@@ -64,6 +71,7 @@ def prod_env_mat(
     - rcut_smth: Smooth hyper-parameter for pair force & energy.
     - radial_only: Whether to return a full description or a radial-only descriptor.
     - protection: Protection parameter to prevent division by zero errors during calculations.
+    - use_exp_switch: Whether to use the exponential switch function.
 
     Returns
     -------
@@ -76,6 +84,7 @@ def prod_env_mat(
         rcut_smth,
         radial_only,
         protection=protection,
+        use_exp_switch=use_exp_switch,
     )  # shape [n_atom, dim, 4 or 1]
     t_avg = mean[atype]  # [n_atom, dim, 4 or 1]
     t_std = stddev[atype]  # [n_atom, dim, 4 or 1]

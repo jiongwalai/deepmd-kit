@@ -35,6 +35,7 @@ from deepmd.utils.path import (
 )
 
 __all__ = [
+    "GLOBAL_NP_FLOAT_PRECISION",
     "VALID_ACTIVATION",
     "VALID_PRECISION",
     "expand_sys_str",
@@ -44,7 +45,7 @@ __all__ = [
     "select_idx_map",
 ]
 
-_PRECISION = Literal["default", "float16", "float32", "float64"]
+_PRECISION = Literal["default", "float16", "bfloat16", "float32", "float64"]
 _ACTIVATION = Literal[
     "relu",
     "relu6",
@@ -207,6 +208,30 @@ def expand_sys_str(root_dir: Union[str, Path]) -> list[str]:
     return matches
 
 
+def rglob_sys_str(root_dir: str, patterns: list[str]) -> list[str]:
+    """Recursively iterate over directories taking those that contain `type.raw` file.
+
+    Parameters
+    ----------
+    root_dir : str, Path
+        starting directory
+    patterns : list[str]
+        list of glob patterns to match directories
+
+    Returns
+    -------
+    list[str]
+        list of string pointing to system directories
+    """
+    root_dir = Path(root_dir)
+    matches = []
+    for pattern in patterns:
+        matches.extend(
+            [str(d) for d in root_dir.rglob(pattern) if (d / "type.raw").is_file()]
+        )
+    return list(set(matches))  # remove duplicates
+
+
 def get_np_precision(precision: "_PRECISION") -> np.dtype:
     """Get numpy precision constant from string.
 
@@ -225,16 +250,11 @@ def get_np_precision(precision: "_PRECISION") -> np.dtype:
     RuntimeError
         if string is invalid
     """
-    if precision == "default":
-        return GLOBAL_NP_FLOAT_PRECISION
-    elif precision == "float16":
-        return np.float16
-    elif precision == "float32":
-        return np.float32
-    elif precision == "float64":
-        return np.float64
-    else:
-        raise RuntimeError(f"{precision} is not a valid precision")
+    from deepmd.dpmodel.common import (
+        get_xp_precision,
+    )
+
+    return get_xp_precision(np, precision)
 
 
 def symlink_prefix_files(old_prefix: str, new_prefix: str) -> None:
@@ -264,7 +284,7 @@ def symlink_prefix_files(old_prefix: str, new_prefix: str) -> None:
             shutil.copyfile(ori_ff, new_ff)
 
 
-def get_hash(obj) -> str:
+def get_hash(obj: Any) -> str:
     """Get hash of object.
 
     Parameters

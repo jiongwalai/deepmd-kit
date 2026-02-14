@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-import datetime
+import contextlib
 import functools
 import logging
 import time
@@ -19,6 +19,7 @@ import paddle.distributed as dist
 from paddle.distributed import (
     fleet,
 )
+from paddle.distributed.fleet.utils import hybrid_parallel_util as hpu
 from paddle.framework import (
     core,
 )
@@ -29,13 +30,12 @@ from paddle.io import (
 from deepmd.common import (
     symlink_prefix_files,
 )
-from deepmd.dpmodel.utils.learning_rate import (
-    LearningRateExp,
-)
 from deepmd.loggers.training import (
+    format_training_message,
     format_training_message_per_task,
 )
 from deepmd.pd.loss import (
+    EnergyHessianStdLoss,
     EnergyStdLoss,
     TaskLoss,
 )
@@ -54,12 +54,16 @@ from deepmd.pd.utils.dataloader import (
 )
 from deepmd.pd.utils.env import (
     CINN,
+    CINN_ALLOW_DYNAMIC_SHAPE,
     DEFAULT_PRECISION,
     DEVICE,
     JIT,
     NUM_WORKERS,
     SAMPLER_RECORD,
     enable_prim,
+)
+from deepmd.pd.utils.learning_rate import (
+    LearningRateExp,
 )
 from deepmd.pd.utils.stat import (
     make_stat_input,
@@ -76,22 +80,6 @@ from deepmd.utils.path import (
 )
 
 log = logging.getLogger(__name__)
-
-from typing import (
-    Optional,
-)
-
-
-def format_training_message(
-    batch: int,
-    wall_time: float,
-    eta: Optional[int] = None,
-):
-    """Format a training message."""
-    msg = f"batch {batch:7d}: total wall time = {wall_time:.2f} s"
-    if isinstance(eta, int):
-        msg += f", eta = {datetime.timedelta(seconds=int(eta))!s}"
-    return msg
 
 
 class Trainer:
@@ -145,6 +133,9 @@ class Trainer:
 
         # Iteration config
         self.num_steps = training_params["numb_steps"]
+        self.acc_freq: int = training_params.get(
+            "acc_freq", 1
+        )  # gradient accumulation steps
         self.disp_file = training_params.get("disp_file", "lcurve.out")
         self.disp_freq = training_params.get("disp_freq", 1000)
         self.save_ckpt = training_params.get("save_ckpt", "model.ckpt")
@@ -185,7 +176,6 @@ class Trainer:
                     if dist.is_available()
                     else 0,  # setting to 0 diverges the behavior of its iterator; should be >=1
                     collate_fn=lambda batch: batch[0],  # prevent extra conversion
-                    # pin_memory=True,
                 )
                 _data_buffered = BufferedIterator(iter(_dataloader))
                 return _dataloader, _data_buffered
@@ -274,8 +264,22 @@ class Trainer:
         else:
             self.opt_type, self.opt_param = get_opt_param(training_params)
 
+        # loss_param_tmp for Hessian activation
+        loss_param_tmp = None
+        if not self.multi_task:
+            loss_param_tmp = config["loss"]
+        else:
+            loss_param_tmp = {
+                model_key: config["loss_dict"][model_key]
+                for model_key in self.model_keys
+            }
+
         # Model
-        self.model = get_model_for_wrapper(model_params, resuming=resuming)
+        self.model = get_model_for_wrapper(
+            model_params,
+            resuming=resuming,
+            _loss_params=loss_param_tmp,
+        )
 
         # Loss
         if not self.multi_task:
@@ -601,6 +605,74 @@ class Trainer:
         else:
             raise ValueError(f"Not supported optimizer type '{self.opt_type}'")
 
+        # NOTE: to_static + compiler should be before distributed wrapper
+        if CINN:
+            from paddle import (
+                jit,
+                static,
+            )
+
+            backend = "CINN" if CINN else None
+            if CINN_ALLOW_DYNAMIC_SHAPE:
+                # Build spec only for keys present in sample data
+                # NOTE: This is a trick to decide the right input_spec for wrapper.forward
+                _, label_dict, _ = self.get_data(is_train=True)
+                # Define specification templates
+                spec_templates = {
+                    "find_box": np.float32(1.0),
+                    "find_coord": np.float32(1.0),
+                    "find_numb_copy": np.float32(0.0),
+                    "numb_copy": static.InputSpec([1, 1], "int64", name="numb_copy"),
+                    "find_energy": np.float32(1.0),
+                    "energy": static.InputSpec([1, 1], "float64", name="energy"),
+                    "find_force": np.float32(1.0),
+                    "force": static.InputSpec([1, -1, 3], "float64", name="force"),
+                    "find_virial": np.float32(0.0),
+                    "virial": static.InputSpec([1, 9], "float64", name="virial"),
+                    "natoms": static.InputSpec([1, -1], "int32", name="natoms"),
+                }
+                label_dict_spec = {
+                    k: spec_templates[k]
+                    for k in label_dict.keys()
+                    if k in spec_templates
+                }
+                self.wrapper.forward = jit.to_static(
+                    backend=backend,
+                    input_spec=[
+                        static.InputSpec([1, -1, 3], "float64", name="coord"),  # coord
+                        static.InputSpec([1, -1], "int32", name="atype"),  # atype
+                        None,  # spin
+                        static.InputSpec([1, 9], "float64", name="box"),  # box
+                        static.InputSpec([], "float64", name="cur_lr"),  # cur_lr
+                        label_dict_spec,  # label,
+                        # None, # task_key
+                        # False, # inference_only
+                        # False, # do_atomic_virial
+                        # None, # fparam
+                        # None, # aparam
+                    ],
+                    full_graph=True,
+                )(self.wrapper.forward)
+            else:
+                self.wrapper.forward = jit.to_static(full_graph=True, backend=backend)(
+                    self.wrapper.forward
+                )
+
+            log.info(
+                "[CINN] Enable CINN during training, there may be some additional "
+                "compilation time in the first training step."
+            )
+            if not CINN_ALLOW_DYNAMIC_SHAPE:
+                log.info(
+                    "[CINN] Dynamic shape is disabled (CINN_ALLOW_DYNAMIC_SHAPE=0). "
+                    "Make sure the input batch shapes are fixed during training. "
+                    "This is recommended for optimal performance, e.g., as in examples/water."
+                )
+                log.info(
+                    "[CINN] If batch data from your dataset(s) has varying input shapes, consider setting "
+                    "CINN_ALLOW_DYNAMIC_SHAPE=1 to enable dynamic shape support."
+                )
+
         if dist.is_available() and dist.is_initialized():
             # DDP will guarantee the model parameters are identical across all processes
             self.wrapper = fleet.distributed_model(
@@ -632,21 +704,7 @@ class Trainer:
         self.profiling = training_params.get("profiling", False)
         self.profiling_file = training_params.get("profiling_file", "timeline.json")
 
-    def run(self):
-        if CINN:
-            from paddle import (
-                jit,
-            )
-
-            backend = "CINN" if CINN else None
-            self.wrapper.forward = jit.to_static(full_graph=True, backend=backend)(
-                self.wrapper.forward
-            )
-            log.info(
-                "Enable CINN during training, there may be some additional "
-                "compilation time in the first traning step."
-            )
-
+    def run(self) -> None:
         fout = (
             open(
                 self.disp_file,
@@ -674,18 +732,21 @@ class Trainer:
             core.nvprof_enable_record_event()
 
         def step(_step_id, task_key="Default") -> None:
+            if self.multi_task:
+                model_index = dp_random.choice(
+                    np.arange(self.num_model, dtype=np.int_),
+                    p=self.model_prob,
+                )
+                task_key = self.model_keys[model_index]
             # Paddle Profiler
             if enable_profiling:
                 core.nvprof_nvtx_push(f"Training step {_step_id}")
-
-            self.wrapper.train()
             if isinstance(self.lr_exp, dict):
                 _lr = self.lr_exp[task_key]
             else:
                 _lr = self.lr_exp
             cur_lr = _lr.value(_step_id)
             pref_lr = cur_lr
-            self.optimizer.clear_grad(set_to_zero=False)
 
             with nvprof_context(enable_profiling, "Fetching data"):
                 input_dict, label_dict, log_dict = self.get_data(
@@ -701,29 +762,47 @@ class Trainer:
                     pref_lr = _lr.start_lr
                 else:
                     pref_lr = cur_lr
-                with nvprof_context(enable_profiling, "Forward pass"):
-                    model_pred, loss, more_loss = self.wrapper(
-                        **input_dict,
-                        cur_lr=paddle.full([], pref_lr, DEFAULT_PRECISION),
-                        label=label_dict,
-                        task_key=task_key,
-                    )
 
-                with nvprof_context(enable_profiling, "Backward pass"):
-                    loss.backward()
-
-                if self.gradient_max_norm > 0.0:
-                    with nvprof_context(enable_profiling, "Gradient clip"):
-                        paddle.nn.utils.clip_grad_norm_(
-                            self.wrapper.parameters(),
-                            self.gradient_max_norm,
-                            error_if_nonfinite=True,
+                # disable synchronization in forward-backward manually
+                # as derivatives exist in model forward
+                no_sync_context = (
+                    self.wrapper.no_sync
+                    if self.world_size > 1
+                    else contextlib.nullcontext
+                )
+                with no_sync_context():
+                    with nvprof_context(enable_profiling, "Forward pass"):
+                        model_pred, loss, more_loss = self.wrapper(
+                            **input_dict,
+                            cur_lr=paddle.full([], pref_lr, DEFAULT_PRECISION),
+                            label=label_dict,
+                            task_key=task_key,
                         )
 
-                with nvprof_context(enable_profiling, "Adam update"):
-                    self.optimizer.step()
+                    with nvprof_context(enable_profiling, "Backward pass"):
+                        loss.backward()
 
-                self.scheduler.step()
+                # gradient accumulation
+                if (_step_id + 1) % self.acc_freq == 0:
+                    # fuse + allreduce manually before optimization if use DDP + no_sync
+                    # details in https://github.com/PaddlePaddle/Paddle/issues/48898#issuecomment-1343838622
+                    if self.world_size > 1:
+                        hpu.fused_allreduce_gradients(
+                            list(self.wrapper.parameters()), None
+                        )
+
+                    if self.gradient_max_norm > 0.0:
+                        with nvprof_context(enable_profiling, "Gradient clip"):
+                            paddle.nn.utils.clip_grad_norm_(
+                                self.wrapper.parameters(),
+                                self.gradient_max_norm,
+                                error_if_nonfinite=True,
+                            )
+
+                    with nvprof_context(enable_profiling, "Adam update"):
+                        self.optimizer.step()
+                    self.optimizer.clear_grad(set_to_zero=False)
+                    self.scheduler.step()
 
             else:
                 raise ValueError(f"Not supported optimizer type '{self.opt_type}'")
@@ -846,7 +925,9 @@ class Trainer:
                 self.t0 = current_time
                 if self.rank == 0 and self.timing_in_training:
                     eta = int(
-                        (self.num_steps - _step_id - 1) / self.disp_freq * train_time
+                        (self.num_steps - display_step_id)
+                        / min(self.disp_freq, display_step_id - self.start_step)
+                        * train_time
                     )
                     log.info(
                         format_training_message(
@@ -876,12 +957,6 @@ class Trainer:
             ) and (self.rank == 0 or dist.get_rank() == 0):
                 # Handle the case if rank 0 aborted and re-assigned
                 self.latest_model = Path(self.save_ckpt + f"-{_step_id + 1}.pd")
-
-                module = (
-                    self.wrapper.module
-                    if dist.is_available() and dist.is_initialized()
-                    else self.wrapper
-                )
                 self.save_model(self.latest_model, lr=cur_lr, step=_step_id)
                 log.info(f"Saved model to {self.latest_model}")
                 symlink_prefix_files(self.latest_model.stem, self.save_ckpt)
@@ -905,24 +980,8 @@ class Trainer:
         self.wrapper.train()
         self.t0 = time.time()
         self.total_train_time = 0.0
-        for step_id in range(self.num_steps):
-            if step_id < self.start_step:
-                continue
-            if self.multi_task:
-                chosen_index_list = dp_random.choice(
-                    np.arange(
-                        self.num_model, dtype=np.int32
-                    ),  # int32 should be enough for # models...
-                    p=np.array(self.model_prob),
-                    size=self.world_size,
-                    replace=True,
-                )
-                assert chosen_index_list.size == self.world_size
-                model_index = chosen_index_list[self.rank]
-                model_key = self.model_keys[model_index]
-            else:
-                model_key = "Default"
-            step(step_id, model_key)
+        for step_id in range(self.start_step, self.num_steps):
+            step(step_id)
             if JIT:
                 break
 
@@ -1000,7 +1059,7 @@ class Trainer:
 
     def save_model(self, save_path, lr=0.0, step=0) -> None:
         module = (
-            self.wrapper.module
+            self.wrapper._layers
             if dist.is_available() and dist.is_initialized()
             else self.wrapper
         )
@@ -1067,9 +1126,11 @@ class Trainer:
                 continue
             elif not isinstance(batch_data[key], list):
                 if batch_data[key] is not None:
-                    batch_data[key] = batch_data[key].to(DEVICE)
+                    batch_data[key] = batch_data[key].to(DEVICE, blocking=False)
             else:
-                batch_data[key] = [item.to(DEVICE) for item in batch_data[key]]
+                batch_data[key] = [
+                    item.to(DEVICE, blocking=False) for item in batch_data[key]
+                ]
         # we may need a better way to classify which are inputs and which are labels
         # now wrapper only supports the following inputs:
         input_keys = [
@@ -1185,8 +1246,16 @@ def get_additional_data_requirement(_model):
     return additional_data_requirement
 
 
+def whether_hessian(loss_params):
+    loss_type = loss_params.get("type", "ener")
+    return loss_type == "ener" and loss_params.get("start_pref_h", 0.0) > 0.0
+
+
 def get_loss(loss_params, start_lr, _ntypes, _model):
     loss_type = loss_params.get("type", "ener")
+    if whether_hessian(loss_params):
+        loss_params["starter_learning_rate"] = start_lr
+        return EnergyHessianStdLoss(**loss_params)
     if loss_type == "ener":
         loss_params["starter_learning_rate"] = start_lr
         return EnergyStdLoss(**loss_params)
@@ -1202,8 +1271,14 @@ def get_single_model(
     return model
 
 
-def get_model_for_wrapper(_model_params, resuming=False):
+def get_model_for_wrapper(
+    _model_params,
+    resuming=False,
+    _loss_params=None,
+):
     if "model_dict" not in _model_params:
+        if _loss_params is not None and whether_hessian(_loss_params):
+            _model_params["hessian_mode"] = True
         _model = get_single_model(
             _model_params,
         )
@@ -1212,6 +1287,8 @@ def get_model_for_wrapper(_model_params, resuming=False):
         model_keys = list(_model_params["model_dict"])
         do_case_embd, case_embd_index = get_case_embd_config(_model_params)
         for _model_key in model_keys:
+            if _loss_params is not None and whether_hessian(_loss_params[_model_key]):
+                _model_params["model_dict"][_model_key]["hessian_mode"] = True
             _model[_model_key] = get_single_model(
                 _model_params["model_dict"][_model_key],
             )

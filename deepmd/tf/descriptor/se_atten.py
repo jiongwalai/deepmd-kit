@@ -38,8 +38,8 @@ from deepmd.tf.env import (
 from deepmd.tf.nvnmd.descriptor.se_atten import (
     build_davg_dstd,
     build_op_descriptor,
-    check_switch_range,
     build_recovered,
+    check_switch_range,
     filter_GR2D,
     filter_lower_R42GR,
 )
@@ -717,14 +717,19 @@ class DescrptSeAtten(DescrptSeA):
         inputs_i = tf.reshape(inputs_i, [-1, self.ndescrpt])
         type_i = -1
 
-        # descrpt and recovered_switch for nvnmd 
+        # descrpt and recovered_switch for nvnmd
         if nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor:
             inputs_i, self.recovered_switch = build_recovered(
-                        inputs_i, self.t_avg, self.t_std,
-                        self.atype_nloc, natoms[0], self.ntypes,
-                        self.rcut_r_smth, self.filter_precision
-                        )
-        
+                inputs_i,
+                self.t_avg,
+                self.t_std,
+                self.atype_nloc,
+                natoms[0],
+                self.ntypes,
+                self.rcut_r_smth,
+                self.filter_precision,
+            )
+
         if len(self.exclude_types):
             mask = self.build_type_exclude_mask_mixed(
                 self.exclude_types,
@@ -763,7 +768,7 @@ class DescrptSeAtten(DescrptSeA):
                 )
                 self.negative_mask = -(2 << 32) * (1.0 - self.nmask)
                 inputs_i *= mask
-        
+
         layer, qmat = self._filter(
             inputs_i,
             type_i,
@@ -1603,6 +1608,7 @@ class DescrptSeAtten(DescrptSeA):
                 bias=bias,
                 use_timestep=False,
                 precision=self.precision.name,
+                trainable=self.trainable,
             )
             matrix_list = [
                 attention_layer_params[layer_idx][key]["matrix"]
@@ -1621,6 +1627,7 @@ class DescrptSeAtten(DescrptSeA):
                 bias=bias,
                 use_timestep=False,
                 precision=self.precision.name,
+                trainable=self.trainable,
             )
             out_proj["matrix"] = attention_layer_params[layer_idx]["c_out"]["matrix"]
             if bias:
@@ -1664,6 +1671,7 @@ class DescrptSeAtten(DescrptSeA):
         variables: dict,
         suffix: str = "",
         type_one_side: bool = False,
+        trainable: bool = True,
     ) -> dict:
         """Serialize network.
 
@@ -1689,6 +1697,8 @@ class DescrptSeAtten(DescrptSeA):
             If 'False', type embeddings of both neighbor and central atoms are considered.
             If 'True', only type embeddings of neighbor atoms are considered.
             Default is 'False'.
+        trainable : bool
+            Whether the network is trainable
 
         Returns
         -------
@@ -1729,6 +1739,7 @@ class DescrptSeAtten(DescrptSeA):
                     activation_function=activation_function,
                     resnet_dt=resnet_dt,
                     precision=self.precision.name,
+                    trainable=trainable,
                 )
             assert embeddings[network_idx] is not None
             if weight_name == "idt":
@@ -1993,6 +2004,7 @@ class DescrptSeAtten(DescrptSeA):
                 resnet_dt=self.filter_resnet_dt,
                 variables=self.embedding_net_variables,
                 excluded_types=self.exclude_types,
+                trainable=self.trainable,
                 suffix=suffix,
             ),
             "attention_layers": self.serialize_attention_layers(
@@ -2042,6 +2054,7 @@ class DescrptSeAtten(DescrptSeA):
                         variables=self.two_side_embeeding_net_variables,
                         suffix=suffix,
                         type_one_side=self.type_one_side,
+                        trainable=self.trainable,
                     )
                 }
             )

@@ -8,6 +8,7 @@ from typing import (
 import numpy as np
 
 from deepmd.tf.env import (
+    GLOBAL_NP_FLOAT_PRECISION,
     op_module,
     tf,
 )
@@ -142,8 +143,8 @@ class Wrap:
             d = e.extend_hex(d, w_full)
             # DEVELOP_DEBUG
             if jdata_sys["debug"]:
-                log.info("%s: %d x % d bit" % (k, h, w * 4))
-                FioTxt().save("nvnmd/wrap/h%s.txt" % (k), d)
+                log.info(f"{k}: {h} x {w * 4} bit")
+                FioTxt().save(f"nvnmd/wrap/h{k}.txt", d)
             datas[ii] = d
         # update h & w of nvnmd_cfg
         nvnmd_cfg.size["NH_DATA"] = nhs
@@ -300,7 +301,7 @@ class Wrap:
                         cfgs = mapt["cfg_u2s"]
                         cfgs = np.array([np.float64(v) for vs in cfgs for v in vs])
                         feed_dict = {
-                            t_x: np.ones([1, 1]) * 0.0,
+                            t_x: np.ones([1, 1], dtype=GLOBAL_NP_FLOAT_PRECISION) * 0.0,
                             t_table: mi,
                             t_table_grad: mi * 0.0,
                             t_table_info: cfgs,
@@ -312,7 +313,7 @@ class Wrap:
                         cfgs = mapt["cfg_s2g"]
                         cfgs = np.array([np.float64(v) for vs in cfgs for v in vs])
                         feed_dict = {
-                            t_x: np.ones([1, 1]) * si,
+                            t_x: np.ones([1, 1], dtype=GLOBAL_NP_FLOAT_PRECISION) * si,
                             t_table: mi,
                             t_table_grad: mi * 0.0,
                             t_table_info: cfgs,
@@ -320,7 +321,7 @@ class Wrap:
                         gi = run_sess(sess, t_y, feed_dict=feed_dict)
                         gsi = np.reshape(si, [-1]) * np.reshape(gi, [-1])
                     else:
-                        gsi = np.zeros(M1)
+                        gsi = np.zeros(M1, dtype=GLOBAL_NP_FLOAT_PRECISION)
                     for ii in range(M1):
                         GSs.extend(
                             e.dec2bin(e.qr(gsi[ii], NBIT_FIXD_FL), NBIT_FIXD, True)
@@ -336,7 +337,6 @@ class Wrap:
             NBIT_FLTE = nbit["NBIT_FLTE"]
             NBIT_NSTEP = nbit["NBIT_NSTEP"]
             NIX = dscp["NIX"]
-            print(dscp)
             # shift_idx_s2g
             x_st, x_ed, x_dt, N0, N1 = mapt["cfg_s2g"][0]
             shift_idx_s2g = int(np.round(-x_st / x_dt))
@@ -473,10 +473,10 @@ class Wrap:
         NBIT_WEIGHT_FL = NBIT_WEIGHT - 2
         sh = weight.shape
         nr, nc = sh[0], sh[1]
-        nrs = np.zeros(nr)
-        ncs = np.zeros(nc)
-        wrs = np.zeros([nr, nc])
-        wcs = np.zeros([nr, nc])
+        nrs = np.zeros(nr, dtype=GLOBAL_NP_FLOAT_PRECISION)
+        ncs = np.zeros(nc, dtype=GLOBAL_NP_FLOAT_PRECISION)
+        wrs = np.zeros([nr, nc], dtype=GLOBAL_NP_FLOAT_PRECISION)
+        wcs = np.zeros([nr, nc], dtype=GLOBAL_NP_FLOAT_PRECISION)
         e = Encode()
         # row
         for ii in range(nr):
@@ -612,7 +612,7 @@ class Wrap:
         d_avg = maps["davg_opp"]
         d_std = maps["dstd_inv"]
         # d2 = np.zeros([ntype_max, 3])
-        d2 = np.zeros([ntype_max, 4])
+        d2 = np.zeros([ntype_max, 4], dtype=GLOBAL_NP_FLOAT_PRECISION)
         for ii in range(ntype):
             d2[ii, 0] = d_avg[ii, 0]
             d2[ii, 1] = d_std[ii, 0]
@@ -620,7 +620,7 @@ class Wrap:
         bstd = e.flt2bin(d2, NBIT_FLTE, NBIT_FLTF)
         # gtt
         d = maps["gt"]
-        d2 = np.zeros([ntype_max**2, M1])
+        d2 = np.zeros([ntype_max**2, M1], dtype=GLOBAL_NP_FLOAT_PRECISION)
         for ii in range(ntype):
             for jj in range(ntype):
                 _d = d[ii * (ntype + 1) + jj]
@@ -632,7 +632,7 @@ class Wrap:
         d = maps["t_ebd"]
         w = get_type_weight(weight, 0)
         nd = w.shape[1]
-        d2 = np.zeros([ntype_max, nd])
+        d2 = np.zeros([ntype_max, nd], dtype=GLOBAL_NP_FLOAT_PRECISION)
         for ii in range(ntype):
             _d = d[ii]
             _d = np.reshape(_d, [1, -1])
