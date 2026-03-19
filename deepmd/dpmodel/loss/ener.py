@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from typing import (
     Any,
-    Optional,
 )
 
 import array_api_compat
@@ -44,7 +43,7 @@ class EnergyLoss(Loss):
         limit_pref_ae: float = 0.0,
         start_pref_pf: float = 0.0,
         limit_pref_pf: float = 0.0,
-        relative_f: Optional[float] = None,
+        relative_f: float | None = None,
         enable_atom_ener_coeff: bool = False,
         start_pref_gf: float = 0.0,
         limit_pref_gf: float = 0.0,
@@ -94,12 +93,12 @@ class EnergyLoss(Loss):
         natoms: int,
         model_dict: dict[str, Array],
         label_dict: dict[str, Array],
-    ) -> dict[str, Array]:
+    ) -> tuple[Array, dict[str, Array]]:
         """Calculate loss from model results and labeled results."""
-        energy = model_dict["energy_redu"]
-        force = model_dict["energy_derv_r"]
-        virial = model_dict["energy_derv_c_redu"]
-        atom_ener = model_dict["energy"]
+        energy = model_dict["energy"]
+        force = model_dict["force"]
+        virial = model_dict["virial"]
+        atom_ener = model_dict["atom_energy"]
         energy_hat = label_dict["energy"]
         force_hat = label_dict["force"]
         virial_hat = label_dict["virial"]
@@ -132,8 +131,8 @@ class EnergyLoss(Loss):
             # E = - E(A) - E(B) + E(C) + E(D)
             # A, B, C, D could be put far away from each other
             atom_ener_coeff = label_dict["atom_ener_coeff"]
-            atom_ener_coeff = xp.reshape(atom_ener_coeff, xp.shape(atom_ener))
-            energy = xp.sum(atom_ener_coeff * atom_ener, 1)
+            atom_ener_coeff = xp.reshape(atom_ener_coeff, atom_ener.shape)
+            energy = xp.sum(atom_ener_coeff * atom_ener, axis=1)
         if self.has_f or self.has_pf or self.relative_f or self.has_gf:
             force_reshape = xp.reshape(force, (-1,))
             force_hat_reshape = xp.reshape(force_hat, (-1,))
@@ -180,7 +179,9 @@ class EnergyLoss(Loss):
                     delta=self.huber_delta,
                 )
                 loss += pref_e * l_huber_loss
-            more_loss["rmse_e"] = self.display_if_exist(l2_ener_loss, find_energy)
+            more_loss["rmse_e"] = self.display_if_exist(
+                xp.sqrt(l2_ener_loss) * atom_norm_ener, find_energy
+            )
         if self.has_f:
             l2_force_loss = xp.mean(xp.square(diff_f))
             if not self.use_huber:
@@ -192,7 +193,9 @@ class EnergyLoss(Loss):
                     delta=self.huber_delta,
                 )
                 loss += pref_f * l_huber_loss
-            more_loss["rmse_f"] = self.display_if_exist(l2_force_loss, find_force)
+            more_loss["rmse_f"] = self.display_if_exist(
+                xp.sqrt(l2_force_loss), find_force
+            )
         if self.has_v:
             virial_reshape = xp.reshape(virial, (-1,))
             virial_hat_reshape = xp.reshape(virial_hat, (-1,))
@@ -208,7 +211,9 @@ class EnergyLoss(Loss):
                     delta=self.huber_delta,
                 )
                 loss += pref_v * l_huber_loss
-            more_loss["rmse_v"] = self.display_if_exist(l2_virial_loss, find_virial)
+            more_loss["rmse_v"] = self.display_if_exist(
+                xp.sqrt(l2_virial_loss) * atom_norm, find_virial
+            )
         if self.has_ae:
             atom_ener_reshape = xp.reshape(atom_ener, (-1,))
             atom_ener_hat_reshape = xp.reshape(atom_ener_hat, (-1,))
@@ -225,7 +230,7 @@ class EnergyLoss(Loss):
                 )
                 loss += pref_ae * l_huber_loss
             more_loss["rmse_ae"] = self.display_if_exist(
-                l2_atom_ener_loss, find_atom_ener
+                xp.sqrt(l2_atom_ener_loss), find_atom_ener
             )
         if self.has_pf:
             atom_pref_reshape = xp.reshape(atom_pref, (-1,))
@@ -234,20 +239,21 @@ class EnergyLoss(Loss):
             )
             loss += pref_pf * l2_pref_force_loss
             more_loss["rmse_pf"] = self.display_if_exist(
-                l2_pref_force_loss, find_atom_pref
+                xp.sqrt(l2_pref_force_loss), find_atom_pref
             )
         if self.has_gf:
             find_drdq = label_dict["find_drdq"]
             drdq = label_dict["drdq"]
-            force_reshape_nframes = xp.reshape(force, (-1, natoms[0] * 3))
-            force_hat_reshape_nframes = xp.reshape(force_hat, (-1, natoms[0] * 3))
+            force_reshape_nframes = xp.reshape(force, (-1, natoms * 3))
+            force_hat_reshape_nframes = xp.reshape(force_hat, (-1, natoms * 3))
             drdq_reshape = xp.reshape(
-                drdq, (-1, natoms[0] * 3, self.numb_generalized_coord)
+                drdq, (-1, natoms * 3, self.numb_generalized_coord)
             )
-            gen_force_hat = xp.einsum(
-                "bij,bi->bj", drdq_reshape, force_hat_reshape_nframes
+            # "bij,bi->bj" einsum replaced with array-API-compatible ops
+            gen_force_hat = xp.sum(
+                drdq_reshape * force_hat_reshape_nframes[:, :, None], axis=1
             )
-            gen_force = xp.einsum("bij,bi->bj", drdq_reshape, force_reshape_nframes)
+            gen_force = xp.sum(drdq_reshape * force_reshape_nframes[:, :, None], axis=1)
             diff_gen_force = gen_force_hat - gen_force
             l2_gen_force_loss = xp.mean(xp.square(diff_gen_force))
             pref_gf = find_drdq * (
@@ -255,7 +261,9 @@ class EnergyLoss(Loss):
                 + (self.start_pref_gf - self.limit_pref_gf) * lr_ratio
             )
             loss += pref_gf * l2_gen_force_loss
-            more_loss["rmse_gf"] = self.display_if_exist(l2_gen_force_loss, find_drdq)
+            more_loss["rmse_gf"] = self.display_if_exist(
+                xp.sqrt(l2_gen_force_loss), find_drdq
+            )
 
         self.l2_l = loss
         more_loss["rmse"] = xp.sqrt(loss)

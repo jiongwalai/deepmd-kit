@@ -96,7 +96,7 @@ class NvnmdConfig:
         self.config["ctrl"] = self.ctrl
         self.config["nbit"] = self.nbit
 
-    def init_train_mode(self, mod="cnn"):
+    def init_train_mode(self, mod: str = "cnn") -> None:
         r"""Configure for taining cnn or qnn."""
         if mod == "cnn":
             self.restore_descriptor = False
@@ -109,7 +109,7 @@ class NvnmdConfig:
             self.quantize_descriptor = True
             self.quantize_fitting_net = True
 
-    def init_from_config(self, jdata):
+    def init_from_config(self, jdata: dict) -> None:
         r"""Initialize member element one by one."""
         if "ctrl" in jdata.keys():
             if "VERSION" in jdata["ctrl"].keys():
@@ -128,7 +128,7 @@ class NvnmdConfig:
         self.config["nbit"] = self.init_nbit(self.config["nbit"], self.config)
         self.init_value()
 
-    def init_config_by_version(self, version, max_nnei):
+    def init_config_by_version(self, version: str, max_nnei: int) -> None:
         r"""Initialize version-dependent parameters."""
         self.version = version
         self.max_nnei = max_nnei
@@ -158,7 +158,7 @@ class NvnmdConfig:
         if self.enable:
             self.config["fitn"]["neuron"] = [self.net_size] * 3
 
-    def init_from_deepmd_input(self, jdata):
+    def init_from_deepmd_input(self, jdata: dict) -> None:
         r"""Initialize members with input script of deepmd."""
         fioObj = FioDic()
         self.config["dscp"] = fioObj.update(jdata["descriptor"], self.config["dscp"])
@@ -316,7 +316,7 @@ class NvnmdConfig:
         jdata["NBIT_SEL"] = int(np.ceil(np.log2(NSEL)))
         return jdata
 
-    def save(self, file_name=None):
+    def save(self, file_name: str | None = None) -> None:
         r"""Save all configuration to file."""
         if file_name is None:
             file_name = self.save_path
@@ -328,13 +328,13 @@ class NvnmdConfig:
         # self.init_from_config(load_config)
         FioDic().save(file_name, self.config)
 
-    def set_ntype(self, ntype):
+    def set_ntype(self, ntype: int) -> None:
         r"""Set the number of type."""
         self.dscp["ntype"] = ntype
         self.config["dscp"]["ntype"] = ntype
         nvnmd_cfg.save()
 
-    def get_s_range(self, davg, dstd):
+    def get_s_range(self, davg: np.ndarray, dstd: np.ndarray) -> None:
         r"""Get the range of switch function."""
         rmin = nvnmd_cfg.dscp["rcut_smth"]
         rmax = nvnmd_cfg.dscp["rcut"]
@@ -357,7 +357,7 @@ class NvnmdConfig:
                 "Please reset the rcut_smth as a bigger value to fix this warning"
             )
 
-    def get_dscp_jdata(self):
+    def get_dscp_jdata(self) -> dict:
         r"""Generate `model/descriptor` in input script."""
         dscp = self.dscp
         jdata = self.jdata_deepmd_input["model"]["descriptor"]
@@ -385,7 +385,7 @@ class NvnmdConfig:
         jdata["axis_neuron"] = dscp["axis_neuron"]
         return jdata
 
-    def get_fitn_jdata(self):
+    def get_fitn_jdata(self) -> dict:
         r"""Generate `model/fitting_net` in input script."""
         fitn = self.fitn
         jdata = self.jdata_deepmd_input["model"]["fitting_net"]
@@ -393,7 +393,7 @@ class NvnmdConfig:
         jdata["seed"] = fitn["seed"]
         return jdata
 
-    def get_model_jdata(self):
+    def get_model_jdata(self) -> dict:
         r"""Generate `model` in input script."""
         jdata = self.jdata_deepmd_input["model"]
         log.info(jdata)
@@ -404,7 +404,7 @@ class NvnmdConfig:
             jdata["type_map"] = self.dpin["type_map"]
         return jdata
 
-    def get_nvnmd_jdata(self):
+    def get_nvnmd_jdata(self) -> dict:
         r"""Generate `nvnmd` in input script."""
         jdata = self.jdata_deepmd_input["nvnmd"]
         jdata["net_size"] = self.net_size
@@ -420,19 +420,19 @@ class NvnmdConfig:
         jdata["quantize_fitting_net"] = self.quantize_fitting_net
         return jdata
 
-    def get_learning_rate_jdata(self):
+    def get_learning_rate_jdata(self) -> dict:
         r"""Generate `learning_rate` in input script."""
         return self.jdata_deepmd_input["learning_rate"]
 
-    def get_loss_jdata(self):
+    def get_loss_jdata(self) -> dict:
         r"""Generate `loss` in input script."""
         return self.jdata_deepmd_input["loss"]
 
-    def get_training_jdata(self):
+    def get_training_jdata(self) -> dict:
         r"""Generate `training` in input script."""
         return self.jdata_deepmd_input["training"]
 
-    def get_deepmd_jdata(self):
+    def get_deepmd_jdata(self) -> dict:
         r"""Generate input script with member element one by one."""
         jdata = copy.deepcopy(self.jdata_deepmd_input)
         jdata["model"] = self.get_model_jdata()
@@ -442,7 +442,7 @@ class NvnmdConfig:
         jdata["training"] = self.get_training_jdata()
         return jdata
 
-    def get_dp_init_weights(self):
+    def get_dp_init_weights(self) -> dict:
         r"""Build the weight dict for initialization of net."""
         dic = {}
         for key in self.weight.keys():

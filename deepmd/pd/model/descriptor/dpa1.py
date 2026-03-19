@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-from typing import (
+from collections.abc import (
     Callable,
-    Optional,
-    Union,
+)
+from typing import (
+    Any,
 )
 
 import paddle
@@ -213,7 +214,7 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
         self,
         rcut: float,
         rcut_smth: float,
-        sel: Union[list[int], int],
+        sel: list[int] | int,
         ntypes: int,
         neuron: list = [25, 50, 100],
         axis_neuron: int = 16,
@@ -230,22 +231,22 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
         exclude_types: list[tuple[int, int]] = [],
         env_protection: float = 0.0,
         scaling_factor: int = 1.0,
-        normalize=True,
-        temperature=None,
+        normalize: bool = True,
+        temperature: float | None = None,
         concat_output_tebd: bool = True,
         trainable: bool = True,
         trainable_ln: bool = True,
-        ln_eps: Optional[float] = 1e-5,
+        ln_eps: float | None = 1e-5,
         smooth_type_embedding: bool = True,
         type_one_side: bool = False,
-        stripped_type_embedding: Optional[bool] = None,
-        seed: Optional[Union[int, list[int]]] = None,
+        stripped_type_embedding: bool | None = None,
+        seed: int | list[int] | None = None,
         use_econf_tebd: bool = False,
         use_tebd_bias: bool = False,
-        type_map: Optional[list[str]] = None,
+        type_map: list[str] | None = None,
         # not implemented
-        spin=None,
-        type: Optional[str] = None,
+        spin: Any = None,
+        type: str | None = None,
     ) -> None:
         super().__init__()
         # Ensure compatibility with the deprecated stripped_type_embedding option.
@@ -399,7 +400,9 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
         """Returns the protection of building environment matrix."""
         return self.se_atten.get_env_protection()
 
-    def share_params(self, base_class, shared_level, resume=False) -> None:
+    def share_params(
+        self, base_class: Any, shared_level: int, resume: bool = False
+    ) -> None:
         """
         Share the parameters of self to the base_class with shared_level during multitask training.
         If not start from checkpoint (resume is False),
@@ -427,18 +430,18 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
             raise NotImplementedError
 
     @property
-    def dim_out(self):
+    def dim_out(self) -> int:
         return self.get_dim_out()
 
     @property
-    def dim_emb(self):
+    def dim_emb(self) -> int:
         return self.get_dim_emb()
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
-        path: Optional[DPPath] = None,
-    ):
+        merged: Callable[[], list[dict]] | list[dict],
+        path: DPPath | None = None,
+    ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
 
@@ -471,7 +474,7 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
         return self.se_atten.mean, self.se_atten.stddev
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat=None
+        self, type_map: list[str], model_with_new_type_stat: Any = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
@@ -571,7 +574,7 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
             data["use_tebd_bias"] = True
         obj = cls(**data)
 
-        def t_cvt(xx):
+        def t_cvt(xx: Any) -> paddle.Tensor:
             return paddle.to_tensor(xx, dtype=obj.se_atten.prec).to(device=env.DEVICE)
 
         obj.type_embedding.embedding = TypeEmbedNetConsistent.deserialize(
@@ -597,7 +600,7 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
         table_stride_2: float = 0.1,
         check_frequency: int = -1,
     ) -> None:
-        """Receive the statisitcs (distance, max_nbor_size and env_mat_range) of the training data.
+        """Receive the statistics (distance, max_nbor_size and env_mat_range) of the training data.
 
         Parameters
         ----------
@@ -620,9 +623,9 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
         extended_coord: paddle.Tensor,
         extended_atype: paddle.Tensor,
         nlist: paddle.Tensor,
-        mapping: Optional[paddle.Tensor] = None,
-        comm_dict: Optional[list[paddle.Tensor]] = None,
-    ):
+        mapping: paddle.Tensor | None = None,
+        comm_dict: list[paddle.Tensor] | None = None,
+    ) -> paddle.Tensor:
         """Compute the descriptor.
 
         Parameters
@@ -689,9 +692,9 @@ class DescrptDPA1(BaseDescriptor, paddle.nn.Layer):
     def update_sel(
         cls,
         train_data: DeepmdDataSystem,
-        type_map: Optional[list[str]],
+        type_map: list[str] | None,
         local_jdata: dict,
-    ) -> tuple[dict, Optional[float]]:
+    ) -> tuple[dict, float | None]:
         """Update the selection and perform neighbor statistics.
 
         Parameters

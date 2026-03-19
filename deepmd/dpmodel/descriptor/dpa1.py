@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import math
-from typing import (
+from collections.abc import (
     Callable,
+)
+from typing import (
     NoReturn,
     Optional,
     Union,
@@ -240,11 +242,13 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
        arXiv preprint arXiv:2208.08236.
     """
 
+    _update_sel_cls = UpdateSel
+
     def __init__(
         self,
         rcut: float,
         rcut_smth: float,
-        sel: Union[list[int], int],
+        sel: list[int] | int,
         ntypes: int,
         neuron: list[int] = [25, 50, 100],
         axis_neuron: int = 8,
@@ -264,18 +268,18 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
         precision: str = DEFAULT_PRECISION,
         scaling_factor: float = 1.0,
         normalize: bool = True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         trainable_ln: bool = True,
-        ln_eps: Optional[float] = 1e-5,
+        ln_eps: float | None = 1e-5,
         smooth_type_embedding: bool = True,
         concat_output_tebd: bool = True,
         spin: None = None,
-        stripped_type_embedding: Optional[bool] = None,
+        stripped_type_embedding: bool | None = None,
         use_econf_tebd: bool = False,
         use_tebd_bias: bool = False,
-        type_map: Optional[list[str]] = None,
+        type_map: list[str] | None = None,
         # consistent with argcheck, not used though
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
     ) -> None:
         ## seed, uniform_seed, not included.
         # Ensure compatibility with the deprecated stripped_type_embedding option.
@@ -419,8 +423,8 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
-        path: Optional[DPPath] = None,
+        merged: Callable[[], list[dict]] | list[dict],
+        path: DPPath | None = None,
     ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
@@ -488,7 +492,8 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
         coord_ext: Array,
         atype_ext: Array,
         nlist: Array,
-        mapping: Optional[Array] = None,
+        mapping: Array | None = None,
+        fparam: Array | None = None,
     ) -> Array:
         """Compute the descriptor.
 
@@ -638,7 +643,7 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
     def update_sel(
         cls,
         train_data: DeepmdDataSystem,
-        type_map: Optional[list[str]],
+        type_map: list[str] | None,
         local_jdata: dict,
     ) -> tuple[Array, Array]:
         """Update the selection and perform neighbor statistics.
@@ -660,7 +665,7 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
             The minimum distance between two atoms
         """
         local_jdata_cpy = local_jdata.copy()
-        min_nbor_dist, sel = UpdateSel().update_one_sel(
+        min_nbor_dist, sel = cls._update_sel_cls().update_one_sel(
             train_data, type_map, local_jdata_cpy["rcut"], local_jdata_cpy["sel"], True
         )
         local_jdata_cpy["sel"] = sel[0]
@@ -669,11 +674,89 @@ class DescrptDPA1(NativeOP, BaseDescriptor):
 
 @DescriptorBlock.register("se_atten")
 class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
+    r"""The attention-based descriptor block.
+
+    This block computes an embedding matrix using attention mechanism and type embedding.
+    The descriptor is computed as:
+
+    .. math::
+        \mathcal{D}^i = \frac{1}{N_c^2}(\hat{\mathcal{G}}^i)^T \mathcal{R}^i (\mathcal{R}^i)^T \hat{\mathcal{G}}^i_<,
+
+    where :math:`\hat{\mathcal{G}}^i` is the embedding matrix after self-attention layers,
+    :math:`\mathcal{R}^i` is the coordinate matrix, and :math:`\hat{\mathcal{G}}^i_<` denotes
+    the first `axis_neuron` columns of :math:`\hat{\mathcal{G}}^i`.
+
+    The embedding matrix :math:`\mathcal{G}^i` is computed by:
+
+    .. math::
+        (\mathcal{G}^i)_j = \mathcal{N}(s(r_{ji}), \mathcal{T}_i, \mathcal{T}_j),
+
+    where :math:`\mathcal{N}` is the embedding network, :math:`s(r_{ji})` is the smoothed
+    radial distance, and :math:`\mathcal{T}` denotes type embedding.
+
+    Parameters
+    ----------
+    rcut : float
+        The cut-off radius.
+    rcut_smth : float
+        Where to start smoothing.
+    sel : Union[list[int], int]
+        Maximally possible number of selected neighbors.
+    ntypes : int
+        Number of element types.
+    neuron : list[int], optional
+        Number of neurons in each hidden layer of the embedding net.
+    axis_neuron : int, optional
+        Size of the submatrix of the embedding matrix.
+    tebd_dim : int, optional
+        Dimension of the type embedding.
+    tebd_input_mode : str, optional
+        The input mode of the type embedding. Supported modes are ["concat", "strip"].
+    resnet_dt : bool, optional
+        Time-step `dt` in the resnet construction.
+    type_one_side : bool, optional
+        If True, only type embeddings of neighbor atoms are considered.
+    attn : int, optional
+        Hidden dimension of the attention vectors.
+    attn_layer : int, optional
+        Number of attention layers.
+    attn_dotr : bool, optional
+        If True, dot the angular gate to the attention weights.
+    attn_mask : bool, optional
+        If True, mask the diagonal of attention weights.
+    exclude_types : list[tuple[int, int]], optional
+        The excluded pairs of types which have no interaction.
+    env_protection : float, optional
+        Protection parameter to prevent division by zero.
+    set_davg_zero : bool, optional
+        Set the shift of embedding net input to zero.
+    activation_function : str, optional
+        The activation function in the embedding net.
+    precision : str, optional
+        The precision of the embedding net parameters.
+    scaling_factor : float, optional
+        The scaling factor of normalization in attention weights calculation.
+    normalize : bool, optional
+        Whether to normalize the hidden vectors in attention weights calculation.
+    temperature : float, optional
+        If not None, the scaling of attention weights is `temperature` itself.
+    trainable_ln : bool, optional
+        Whether to use trainable shift and scale weights in layer normalization.
+    ln_eps : float, optional
+        The epsilon value for layer normalization.
+    smooth : bool, optional
+        Whether to use smoothness in attention weights calculation.
+    seed : int, optional
+        Random seed for parameter initialization.
+    trainable : bool, optional
+        If the parameters are trainable.
+    """
+
     def __init__(
         self,
         rcut: float,
         rcut_smth: float,
-        sel: Union[list[int], int],
+        sel: list[int] | int,
         ntypes: int,
         neuron: list[int] = [25, 50, 100],
         axis_neuron: int = 8,
@@ -692,11 +775,11 @@ class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
         precision: str = DEFAULT_PRECISION,
         scaling_factor: float = 1.0,
         normalize: bool = True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         trainable_ln: bool = True,
-        ln_eps: Optional[float] = 1e-5,
+        ln_eps: float | None = 1e-5,
         smooth: bool = True,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         self.rcut = rcut
@@ -705,6 +788,7 @@ class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
             sel = [sel]
         self.sel = sel
         self.nnei = sum(sel)
+        self.ndescrpt = self.nnei * 4
         self.ntypes = ntypes
         self.neuron = neuron
         self.filter_neuron = self.neuron
@@ -873,8 +957,8 @@ class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
-        path: Optional[DPPath] = None,
+        merged: Callable[[], list[dict]] | list[dict],
+        path: DPPath | None = None,
     ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
@@ -907,9 +991,14 @@ class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
         self.stats = env_mat_stat.stats
         mean, stddev = env_mat_stat()
         xp = array_api_compat.array_namespace(self.stddev)
+        device = array_api_compat.device(self.stddev)
         if not self.set_davg_zero:
-            self.mean = xp.asarray(mean, dtype=self.mean.dtype, copy=True)
-        self.stddev = xp.asarray(stddev, dtype=self.stddev.dtype, copy=True)
+            self.mean = xp.asarray(
+                mean, dtype=self.mean.dtype, copy=True, device=device
+            )
+        self.stddev = xp.asarray(
+            stddev, dtype=self.stddev.dtype, copy=True, device=device
+        )
 
     def get_stats(self) -> dict[str, StatItem]:
         """Get the statistics of the descriptor."""
@@ -954,10 +1043,10 @@ class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
         nlist: Array,
         coord_ext: Array,
         atype_ext: Array,
-        atype_embd_ext: Optional[Array] = None,
-        mapping: Optional[Array] = None,
-        type_embedding: Optional[Array] = None,
-    ) -> tuple[Array, Array]:
+        atype_embd_ext: Array | None = None,
+        mapping: Array | None = None,
+        type_embedding: Array | None = None,
+    ) -> tuple[Array, Array, Array, Array, Array]:
         xp = array_api_compat.array_namespace(nlist, coord_ext, atype_ext)
         # nf x nloc x nnei x 4
         dmatrix, diff, sw = self.env_mat.call(
@@ -1042,6 +1131,8 @@ class DescrptBlockSeAtten(NativeOP, DescriptorBlock):
                 idx_j = xp.reshape(nei_type, (-1,))
                 # (nf x nl x nnei) x ng
                 idx = xp.tile(xp.reshape((idx_i + idx_j), (-1, 1)), (1, ng))
+                # Cast to int64 for PyTorch backend (take_along_dim requires Long indices)
+                idx = xp.astype(idx, xp.int64)
                 # (ntypes) * ntypes * nt
                 type_embedding_nei = xp.tile(
                     xp.reshape(type_embedding, (1, ntypes_with_padding, nt)),
@@ -1190,12 +1281,12 @@ class NeighborGatedAttention(NativeOP):
         do_mask: bool = False,
         scaling_factor: float = 1.0,
         normalize: bool = True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         trainable_ln: bool = True,
         ln_eps: float = 1e-5,
         smooth: bool = True,
         precision: str = DEFAULT_PRECISION,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         """Construct a neighbor-wise attention net."""
@@ -1239,8 +1330,8 @@ class NeighborGatedAttention(NativeOP):
         self,
         input_G: Array,
         nei_mask: Array,
-        input_r: Optional[Array] = None,
-        sw: Optional[Array] = None,
+        input_r: Array | None = None,
+        sw: Array | None = None,
     ) -> Array:
         out = input_G
         for layer in self.attention_layers:
@@ -1322,12 +1413,12 @@ class NeighborGatedAttentionLayer(NativeOP):
         do_mask: bool = False,
         scaling_factor: float = 1.0,
         normalize: bool = True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         trainable_ln: bool = True,
         ln_eps: float = 1e-5,
         smooth: bool = True,
         precision: str = DEFAULT_PRECISION,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         """Construct a neighbor-wise attention layer."""
@@ -1369,8 +1460,8 @@ class NeighborGatedAttentionLayer(NativeOP):
         self,
         x: Array,
         nei_mask: Array,
-        input_r: Optional[Array] = None,
-        sw: Optional[Array] = None,
+        input_r: Array | None = None,
+        sw: Array | None = None,
     ) -> Array:
         residual = x
         x, _ = self.attention_layer(x, nei_mask, input_r=input_r, sw=sw)
@@ -1431,11 +1522,11 @@ class GatedAttentionLayer(NativeOP):
         do_mask: bool = False,
         scaling_factor: float = 1.0,
         normalize: bool = True,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
         bias: bool = True,
         smooth: bool = True,
         precision: str = DEFAULT_PRECISION,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         """Construct a multi-head neighbor-wise attention net."""
@@ -1482,8 +1573,8 @@ class GatedAttentionLayer(NativeOP):
         self,
         query: Array,
         nei_mask: Array,
-        input_r: Optional[Array] = None,
-        sw: Optional[Array] = None,
+        input_r: Array | None = None,
+        sw: Array | None = None,
         attnw_shift: float = 20.0,
     ) -> tuple[Array, Array]:
         xp = array_api_compat.array_namespace(query, nei_mask)

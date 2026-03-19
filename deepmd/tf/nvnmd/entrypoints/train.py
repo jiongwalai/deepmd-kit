@@ -3,7 +3,7 @@ import copy
 import logging
 import os
 from typing import (
-    Optional,
+    Any,
 )
 
 from deepmd.tf.entrypoints.freeze import (
@@ -53,7 +53,7 @@ jdata_cmd_freeze = {
 }
 
 
-def normalized_input(fn, PATH_CNN, CONFIG_CNN):
+def normalized_input(fn: str, PATH_CNN: str, CONFIG_CNN: str) -> str:
     r"""Normalize a input script file for continuous neural network."""
     f = FioDic()
     jdata = f.load(fn, jdata_deepmd_input_v0)
@@ -95,7 +95,9 @@ def normalized_input(fn, PATH_CNN, CONFIG_CNN):
     return jdata
 
 
-def normalized_input_qnn(jdata, PATH_QNN, CONFIG_CNN, WEIGHT_CNN, MAP_CNN):
+def normalized_input_qnn(
+    jdata: dict, PATH_QNN: str, CONFIG_CNN: str, WEIGHT_CNN: str, MAP_CNN: str
+) -> str:
     r"""Normalize a input script file for quantize neural network."""
     #
     jdata_nvnmd = jdata_deepmd_input_v0["nvnmd"]
@@ -119,12 +121,12 @@ def normalized_input_qnn(jdata, PATH_QNN, CONFIG_CNN, WEIGHT_CNN, MAP_CNN):
 def train_nvnmd(
     *,
     INPUT: str,
-    init_model: Optional[str],
-    restart: Optional[str],
-    init_frz_model: Optional[str],
+    init_model: str | None,
+    restart: str | None,
+    init_frz_model: str | None,
     step: str,
     skip_neighbor_stat: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> None:
     # test input
     if not os.path.exists(INPUT):

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import warnings
 from typing import (
-    Optional,
+    TYPE_CHECKING,
+    Any,
 )
 
 import numpy as np
@@ -47,6 +48,11 @@ from deepmd.utils.data import (
 from deepmd.utils.version import (
     check_version_compatibility,
 )
+
+if TYPE_CHECKING:
+    from deepmd.tf.utils.learning_rate import (
+        LearningRateExp,
+    )
 
 
 @Fitting.register("polar")
@@ -112,20 +118,20 @@ class PolarFittingSeA(Fitting):
         numb_fparam: int = 0,
         numb_aparam: int = 0,
         dim_case_embd: int = 0,
-        sel_type: Optional[list[int]] = None,
+        sel_type: list[int] | None = None,
         fit_diag: bool = True,
-        scale: Optional[list[float]] = None,
+        scale: list[float] | None = None,
         shift_diag: bool = True,  # YWolfeee: will support the user to decide whether to use this function
         # diag_shift : list[float] = None, YWolfeee: will not support the user to assign a shift
-        seed: Optional[int] = None,
+        seed: int | None = None,
         activation_function: str = "tanh",
         precision: str = "default",
         uniform_seed: bool = False,
         mixed_types: bool = False,
-        type_map: Optional[list[str]] = None,  # to be compat with input
-        default_fparam: Optional[list[float]] = None,  # to be compat with input
-        trainable: Optional[list[bool]] = None,
-        **kwargs,
+        type_map: list[str] | None = None,  # to be compat with input
+        default_fparam: list[float] | None = None,  # to be compat with input
+        trainable: list[bool] | None = None,
+        **kwargs: Any,
     ) -> None:
         """Constructor."""
         self.ntypes = ntypes
@@ -215,7 +221,7 @@ class PolarFittingSeA(Fitting):
         """Get the output size. Should be 9."""
         return 9
 
-    def compute_output_stats(self, all_stat) -> None:
+    def compute_output_stats(self, all_stat: dict) -> None:
         """Compute the output statistics.
 
         Parameters
@@ -309,7 +315,15 @@ class PolarFittingSeA(Fitting):
                 )
 
     @cast_precision
-    def _build_lower(self, start_index, natoms, inputs, rot_mat, suffix="", reuse=None):
+    def _build_lower(
+        self,
+        start_index: int,
+        natoms: int,
+        inputs: tf.Tensor,
+        rot_mat: tf.Tensor,
+        suffix: str = "",
+        reuse: bool | None = None,
+    ) -> tf.Tensor:
         # cut-out inputs
         inputs_i = tf.slice(
             inputs, [0, start_index * self.dim_descrpt], [-1, natoms * self.dim_descrpt]
@@ -425,10 +439,10 @@ class PolarFittingSeA(Fitting):
         input_d: tf.Tensor,
         rot_mat: tf.Tensor,
         natoms: tf.Tensor,
-        input_dict: Optional[dict] = None,
-        reuse: Optional[bool] = None,
+        input_dict: dict | None = None,
+        reuse: bool | None = None,
         suffix: str = "",
-    ):
+    ) -> tf.Tensor:
         """Build the computational graph for fitting net.
 
         Parameters
@@ -607,7 +621,7 @@ class PolarFittingSeA(Fitting):
                     stacklevel=2,
                 )
 
-    def enable_mixed_precision(self, mixed_prec: Optional[dict] = None) -> None:
+    def enable_mixed_precision(self, mixed_prec: dict | None = None) -> None:
         """Receive the mixed precision setting.
 
         Parameters
@@ -618,7 +632,7 @@ class PolarFittingSeA(Fitting):
         self.mixed_prec = mixed_prec
         self.fitting_precision = get_precision(mixed_prec["output_prec"])
 
-    def get_loss(self, loss: dict, lr) -> Loss:
+    def get_loss(self, loss: dict, lr: "LearningRateExp") -> Loss:
         """Get the loss function."""
         return TensorLoss(
             loss,
@@ -691,7 +705,7 @@ class PolarFittingSeA(Fitting):
         return data
 
     @classmethod
-    def deserialize(cls, data: dict, suffix: str):
+    def deserialize(cls, data: dict, suffix: str) -> "PolarFittingSeA":
         """Deserialize the model.
 
         Parameters
@@ -750,11 +764,11 @@ class GlobalPolarFittingSeA:
         descrpt: tf.Tensor,
         neuron: list[int] = [120, 120, 120],
         resnet_dt: bool = True,
-        sel_type: Optional[list[int]] = None,
+        sel_type: list[int] | None = None,
         fit_diag: bool = True,
-        scale: Optional[list[float]] = None,
-        diag_shift: Optional[list[float]] = None,
-        seed: Optional[int] = None,
+        scale: list[float] | None = None,
+        diag_shift: list[float] | None = None,
+        seed: int | None = None,
         activation_function: str = "tanh",
         precision: str = "default",
     ) -> None:
@@ -786,12 +800,12 @@ class GlobalPolarFittingSeA:
 
     def build(
         self,
-        input_d,
-        rot_mat,
-        natoms,
-        input_dict: Optional[dict] = None,
-        reuse=None,
-        suffix="",
+        input_d: tf.Tensor,
+        rot_mat: tf.Tensor,
+        natoms: tf.Tensor,
+        input_dict: dict | None = None,
+        reuse: bool | None = None,
+        suffix: str = "",
     ) -> tf.Tensor:
         """Build the computational graph for fitting net.
 
@@ -849,7 +863,7 @@ class GlobalPolarFittingSeA:
             graph=graph, graph_def=graph_def, suffix=suffix
         )
 
-    def enable_mixed_precision(self, mixed_prec: Optional[dict] = None) -> None:
+    def enable_mixed_precision(self, mixed_prec: dict | None = None) -> None:
         """Receive the mixed precision setting.
 
         Parameters
@@ -859,14 +873,14 @@ class GlobalPolarFittingSeA:
         """
         self.polar_fitting.enable_mixed_precision(mixed_prec)
 
-    def get_loss(self, loss: dict, lr) -> Loss:
+    def get_loss(self, loss: dict, lr: "LearningRateExp") -> Loss:
         """Get the loss function.
 
         Parameters
         ----------
         loss : dict
             the loss dict
-        lr : LearningRateExp
+        lr : LearningRateSchedule
             the learning rate
 
         Returns

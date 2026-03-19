@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import logging
+from collections.abc import (
+    Callable,
+)
+from typing import (
+    Any,
+)
 
 import numpy as np
 
@@ -23,7 +29,7 @@ from deepmd.tf.utils.graph import (
 log = logging.getLogger(__name__)
 
 
-def build_davg_dstd():
+def build_davg_dstd() -> tuple[Any, Any]:
     r"""Get the davg and dstd from the dictionary nvnmd_cfg.
     The davg and dstd have been obtained by training CNN.
     """
@@ -31,7 +37,7 @@ def build_davg_dstd():
     return davg, dstd
 
 
-def check_switch_range(davg, dstd) -> None:
+def check_switch_range(davg: np.ndarray, dstd: np.ndarray) -> None:
     r"""Check the range of switch, let it in range [-2, 14]."""
     rmin = nvnmd_cfg.dscp["rcut_smth"]
     ntype = nvnmd_cfg.dscp["ntype"]
@@ -67,7 +73,7 @@ def check_switch_range(davg, dstd) -> None:
         nvnmd_cfg.get_s_range(davg, dstd)
 
 
-def build_op_descriptor():
+def build_op_descriptor() -> Callable:
     r"""Replace se_a.py/DescrptSeA/build."""
     if nvnmd_cfg.quantize_descriptor:
         # [rij^2, xij, yij, zij]
@@ -76,6 +82,7 @@ def build_op_descriptor():
         return op_module.prod_env_mat_a_mix
 
 
+<<<<<<< HEAD
 def build_recovered(
     descrpt, t_avg, t_std, atype, Na, ntypes, rcut_r_smth, filter_precision
 ):
@@ -123,7 +130,7 @@ def build_recovered(
     return descrpt_norm, recovered_switch
 
 
-def descrpt2shkr(inputs):
+def descrpt2r4(inputs: tf.Tensor) -> tf.Tensor:
     r"""Replace :math:`r_{ji} \rightarrow s_{ji} and h_{ji}`
     where :math:`r_{ji} = (x_{ji}, y_{ji}, z_{ji})` and
     :math:`h_{ji} = \frac{s_{ji} r_{ji}}`.
@@ -194,7 +201,15 @@ def descrpt2shkr(inputs):
     return s, h, k, rji
 
 
-def filter_lower_R42GR(inputs_i, atype, nei_type_vec, recovered_switch):
+<<<<<<< HEAD
+def filter_lower_R42GR(
+    inputs_i: tf.Tensor, atype: tf.Tensor, nei_type_vec: tf.Tensor
+) -> tf.Tensor:
+=======
+def filter_lower_R42GR(
+    inputs_i: tf.Tensor, atype: tf.Tensor, nei_type_vec: tf.Tensor
+) -> tf.Tensor:
+>>>>>>> v3.1.3
     r"""Replace se_a.py/DescrptSeA/_filter_lower."""
     shape_i = inputs_i.get_shape().as_list()
     inputs_reshape = tf.reshape(inputs_i, [-1, 4])
@@ -264,7 +279,7 @@ def filter_lower_R42GR(inputs_i, atype, nei_type_vec, recovered_switch):
     return GR
 
 
-def filter_GR2D(xyz_scatter_1):
+def filter_GR2D(xyz_scatter_1: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
     r"""Replace se_a.py/_filter."""
     NIX = nvnmd_cfg.dscp["NIX"]
     M1 = nvnmd_cfg.dscp["M1"]

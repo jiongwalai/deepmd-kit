@@ -15,11 +15,13 @@ from collections import (
 )
 from typing import (
     Any,
-    Optional,
 )
 
 from deepmd.backend.backend import (
     Backend,
+)
+from deepmd.pretrained.registry import (
+    available_model_names,
 )
 
 try:
@@ -69,7 +71,7 @@ class BackendOption(argparse.Action):
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: Any,
-        option_string: Optional[str] = None,
+        option_string: str | None = None,
     ) -> None:
         setattr(namespace, self.dest, BACKEND_TABLE[values])
 
@@ -87,7 +89,7 @@ class DeprecateAction(argparse.Action):
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: Any,
-        option_string: Optional[str] = None,
+        option_string: str | None = None,
     ) -> None:
         if self.call_count == 0:
             warnings.warn(
@@ -950,10 +952,39 @@ def main_parser() -> argparse.ArgumentParser:
         ],
         nargs="+",
     )
+
+    # pretrained
+    parser_pretrained = subparsers.add_parser(
+        "pretrained",
+        parents=[parser_log],
+        help="Manage builtin pretrained models",
+        formatter_class=RawTextArgumentDefaultsHelpFormatter,
+    )
+    pretrained_subparsers = parser_pretrained.add_subparsers(
+        dest="pretrained_command",
+        required=True,
+    )
+    parser_pretrained_download = pretrained_subparsers.add_parser(
+        "download",
+        help="Download one pretrained model",
+    )
+
+    parser_pretrained_download.add_argument(
+        "MODEL",
+        choices=available_model_names(),
+        help="Pretrained model name",
+    )
+    parser_pretrained_download.add_argument(
+        "--cache-dir",
+        default=None,
+        type=str,
+        help="Optional cache directory for pretrained model files",
+    )
+
     return parser
 
 
-def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse arguments and convert argument strings to objects.
 
     Parameters
@@ -977,7 +1008,7 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     return parsed_args
 
 
-def main(args: Optional[list[str]] = None) -> None:
+def main(args: list[str] | None = None) -> None:
     """DeePMD-kit new entry point.
 
     Parameters
@@ -1005,6 +1036,7 @@ def main(args: Optional[list[str]] = None) -> None:
         "gui",
         "convert-backend",
         "show",
+        "pretrained",
     ):
         # common entrypoints
         from deepmd.entrypoints.main import main as deepmd_main

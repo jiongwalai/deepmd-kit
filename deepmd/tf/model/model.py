@@ -8,10 +8,19 @@ from enum import (
     Enum,
 )
 from typing import (
+    TYPE_CHECKING,
+    Any,
     NoReturn,
-    Optional,
-    Union,
 )
+
+if TYPE_CHECKING:
+    from typing_extensions import (
+        Self,
+    )
+
+    from deepmd.tf.utils.learning_rate import (
+        LearningRateExp,
+    )
 
 import numpy as np
 
@@ -54,6 +63,9 @@ from deepmd.tf.utils.data_system import (
 )
 from deepmd.tf.utils.graph import (
     load_graph_def,
+)
+from deepmd.tf.utils.learning_rate import (
+    LearningRateExp,
 )
 from deepmd.tf.utils.spin import (
     Spin,
@@ -106,7 +118,7 @@ class Model(ABC, make_plugin_registry("model")):
         Compression information for internal use
     """
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "Self":
         if cls is Model:
             # init model
             cls = cls.get_class_by_type(kwargs.get("type", "standard"))
@@ -115,14 +127,14 @@ class Model(ABC, make_plugin_registry("model")):
 
     def __init__(
         self,
-        type_embedding: Optional[Union[dict, TypeEmbedNet]] = None,
-        type_map: Optional[list[str]] = None,
+        type_embedding: dict | TypeEmbedNet | None = None,
+        type_map: list[str] | None = None,
         data_stat_nbatch: int = 10,
         data_bias_nsample: int = 10,
         data_stat_protect: float = 1e-2,
-        spin: Optional[Spin] = None,
-        compress: Optional[dict] = None,
-        **kwargs,
+        spin: Spin | None = None,
+        compress: dict | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         # spin
@@ -155,11 +167,11 @@ class Model(ABC, make_plugin_registry("model")):
         box: tf.Tensor,
         mesh: tf.Tensor,
         input_dict: dict,
-        frz_model: Optional[str] = None,
-        ckpt_meta: Optional[str] = None,
+        frz_model: str | None = None,
+        ckpt_meta: str | None = None,
         suffix: str = "",
-        reuse: Optional[Union[bool, Enum]] = None,
-    ):
+        reuse: bool | Enum | None = None,
+    ) -> dict:
         """Build the model.
 
         Parameters
@@ -223,11 +235,11 @@ class Model(ABC, make_plugin_registry("model")):
         box: tf.Tensor,
         mesh: tf.Tensor,
         input_dict: dict,
-        frz_model: Optional[str] = None,
-        ckpt_meta: Optional[str] = None,
+        frz_model: str | None = None,
+        ckpt_meta: str | None = None,
         suffix: str = "",
-        reuse: Optional[Union[bool, Enum]] = None,
-    ):
+        reuse: bool | Enum | None = None,
+    ) -> dict:
         """Build the descriptor part of the model.
 
         Parameters
@@ -311,10 +323,10 @@ class Model(ABC, make_plugin_registry("model")):
     def build_type_embedding(
         self,
         ntypes: int,
-        frz_model: Optional[str] = None,
-        ckpt_meta: Optional[str] = None,
+        frz_model: str | None = None,
+        ckpt_meta: str | None = None,
         suffix: str = "",
-        reuse: Optional[Union[bool, Enum]] = None,
+        reuse: bool | Enum | None = None,
     ) -> tf.Tensor:
         """Build the type embedding part of the model.
 
@@ -364,7 +376,7 @@ class Model(ABC, make_plugin_registry("model")):
 
     def _import_graph_def_from_frz_model(
         self, frz_model: str, feed_dict: dict, return_elements: list[str]
-    ):
+    ) -> Any:
         return_nodes = [x[:-2] for x in return_elements]
         graph, graph_def = load_graph_def(frz_model)
         sub_graph_def = tf.graph_util.extract_sub_graph(graph_def, return_nodes)
@@ -374,7 +386,7 @@ class Model(ABC, make_plugin_registry("model")):
 
     def _import_graph_def_from_ckpt_meta(
         self, ckpt_meta: str, feed_dict: dict, return_elements: list[str]
-    ):
+    ) -> Any:
         return_nodes = [x[:-2] for x in return_elements]
         with tf.Graph().as_default() as graph:
             tf.train.import_meta_graph(f"{ckpt_meta}.meta", clear_devices=True)
@@ -432,24 +444,24 @@ class Model(ABC, make_plugin_registry("model")):
         """
         raise RuntimeError("Not supported")
 
-    def get_numb_fparam(self) -> Union[int, dict]:
+    def get_numb_fparam(self) -> int | dict:
         """Get the number of frame parameters."""
         return 0
 
-    def get_numb_aparam(self) -> Union[int, dict]:
+    def get_numb_aparam(self) -> int | dict:
         """Get the number of atomic parameters."""
         return 0
 
-    def get_numb_dos(self) -> Union[int, dict]:
+    def get_numb_dos(self) -> int | dict:
         """Get the number of gridpoints in energy space."""
         return 0
 
     @abstractmethod
-    def get_fitting(self) -> Union[Fitting, dict]:
+    def get_fitting(self) -> Fitting | dict:
         """Get the fitting(s)."""
 
     @abstractmethod
-    def get_loss(self, loss: dict, lr) -> Optional[Union[Loss, dict]]:
+    def get_loss(self, loss: dict, lr: LearningRateExp) -> Loss | dict | None:
         """Get the loss function(s)."""
 
     @abstractmethod
@@ -461,7 +473,7 @@ class Model(ABC, make_plugin_registry("model")):
         """Get the number of types."""
 
     @abstractmethod
-    def data_stat(self, data: dict):
+    def data_stat(self, data: dict) -> None:
         """Data staticis."""
 
     def get_feed_dict(
@@ -471,7 +483,7 @@ class Model(ABC, make_plugin_registry("model")):
         natoms: tf.Tensor,
         box: tf.Tensor,
         mesh: tf.Tensor,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, tf.Tensor]:
         """Generate the feed_dict for current descriptor.
 
@@ -518,9 +530,9 @@ class Model(ABC, make_plugin_registry("model")):
     def update_sel(
         cls,
         train_data: DeepmdDataSystem,
-        type_map: Optional[list[str]],
+        type_map: list[str] | None,
         local_jdata: dict,
-    ) -> tuple[dict, Optional[float]]:
+    ) -> tuple[dict, float | None]:
         """Update the selection and perform neighbor statistics.
 
         Notes
@@ -609,7 +621,7 @@ class StandardModel(Model):
         The type map
     """
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> "Model":
         from .dos import (
             DOSModel,
         )
@@ -647,11 +659,11 @@ class StandardModel(Model):
 
     def __init__(
         self,
-        descriptor: Union[dict, Descriptor],
-        fitting_net: Union[dict, Fitting],
-        type_embedding: Optional[Union[dict, TypeEmbedNet]] = None,
-        type_map: Optional[list[str]] = None,
-        **kwargs,
+        descriptor: dict | Descriptor,
+        fitting_net: dict | Fitting,
+        type_embedding: dict | TypeEmbedNet | None = None,
+        type_map: list[str] | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(
             descriptor=descriptor, fitting=fitting_net, type_map=type_map, **kwargs
@@ -806,11 +818,11 @@ class StandardModel(Model):
         ):
             self.typeebd.init_variables(graph, graph_def, suffix=suffix)
 
-    def get_fitting(self) -> Union[Fitting, dict]:
+    def get_fitting(self) -> Fitting | dict:
         """Get the fitting(s)."""
         return self.fitting
 
-    def get_loss(self, loss: dict, lr) -> Union[Loss, dict]:
+    def get_loss(self, loss: dict, lr: LearningRateExp) -> Loss | dict:
         """Get the loss function(s)."""
         return self.fitting.get_loss(loss, lr)
 
@@ -822,7 +834,7 @@ class StandardModel(Model):
         """Get the number of types."""
         return self.ntypes
 
-    def _get_dim_out(self):
+    def _get_dim_out(self) -> int:
         """Get output dimension based on model type.
 
         Returns
@@ -882,7 +894,14 @@ class StandardModel(Model):
         self.out_bias = out_bias_data
         self.out_std = out_std_data
 
-    def _apply_out_bias_std(self, output, atype, natoms, coord, selected_atype=None):
+    def _apply_out_bias_std(
+        self,
+        output: tf.Tensor,
+        atype: tf.Tensor,
+        natoms: list[int],
+        coord: tf.Tensor,
+        selected_atype: tf.Tensor | None = None,
+    ) -> tf.Tensor:
         """Apply output bias and standard deviation to the model output.
 
         Parameters
@@ -950,9 +969,9 @@ class StandardModel(Model):
     def update_sel(
         cls,
         train_data: DeepmdDataSystem,
-        type_map: Optional[list[str]],
+        type_map: list[str] | None,
         local_jdata: dict,
-    ) -> tuple[dict, Optional[float]]:
+    ) -> tuple[dict, float | None]:
         """Update the selection and perform neighbor statistics.
 
         Parameters
@@ -1005,7 +1024,16 @@ class StandardModel(Model):
         check_version_compatibility(data.pop("@version", 2), 2, 1)
         descriptor = Descriptor.deserialize(data.pop("descriptor"), suffix=suffix)
         # bias_atom_e and out_bias are now completely independent - no conversion needed
-        fitting = Fitting.deserialize(data.pop("fitting"), suffix=suffix)
+        fitting_dict = data.pop("fitting", {})
+        atom_exclude_types = data.pop("atom_exclude_types", [])
+        if len(atom_exclude_types) > 0:
+            # get sel_type from complement of atom_exclude_types
+            full_type_list = np.arange(len(data["type_map"]), dtype=int)
+            sel_type = np.setdiff1d(
+                full_type_list, atom_exclude_types, assume_unique=True
+            )
+            fitting_dict["sel_type"] = sel_type.tolist()
+        fitting = Fitting.deserialize(fitting_dict, suffix=suffix)
         # pass descriptor type embedding to model
         if descriptor.explicit_ntypes:
             type_embedding = descriptor.type_embedding
@@ -1013,8 +1041,6 @@ class StandardModel(Model):
         else:
             type_embedding = None
         # BEGINE not supported keys
-        if len(data.pop("atom_exclude_types")) > 0:
-            raise NotImplementedError("atom_exclude_types is not supported")
         if len(data.pop("pair_exclude_types")) > 0:
             raise NotImplementedError("pair_exclude_types is not supported")
         data.pop("rcond", None)
