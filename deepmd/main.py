@@ -330,9 +330,10 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_frz.add_argument(
         "--head",
+        "--model-branch",
         default=None,
         type=str,
-        help="(Supported backend: PyTorch) Task head to freeze if in multi-task mode.",
+        help="(Supported backend: PyTorch) Task head (alias: model branch) to freeze if in multi-task mode.",
     )
 
     # * test script ********************************************************************
@@ -409,9 +410,10 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_tst.add_argument(
         "--head",
+        "--model-branch",
         default=None,
         type=str,
-        help="(Supported backend: PyTorch) Task head to test if in multi-task mode.",
+        help="(Supported backend: PyTorch) Task head (alias: model branch) to test if in multi-task mode.",
     )
 
     # * compress model *****************************************************************
@@ -856,7 +858,7 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_show.add_argument(
         "ATTRIBUTES",
-        choices=["model-branch", "type-map", "descriptor", "fitting-net"],
+        choices=["model-branch", "type-map", "descriptor", "fitting-net", "size"],
         nargs="+",
     )
     return parser
