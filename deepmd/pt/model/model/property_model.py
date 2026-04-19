@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from typing import (
+    Any,
     Optional,
 )
 
 import torch
 
+from deepmd.dpmodel.output_def import (
+    OutputVariableDef,
+)
 from deepmd.pt.model.atomic_model import (
     DPPropertyAtomicModel,
 )
@@ -28,17 +32,17 @@ class PropertyModel(DPModelCommon, DPPropertyModel_):
 
     def __init__(
         self,
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         DPModelCommon.__init__(self)
         DPPropertyModel_.__init__(self, *args, **kwargs)
 
-    def translated_output_def(self):
+    def translated_output_def(self) -> dict[str, OutputVariableDef]:
         out_def_data = self.model_output_def().get_data()
         output_def = {
-            "atom_property": out_def_data["property"],
-            "property": out_def_data["property_redu"],
+            f"atom_{self.get_var_name()}": out_def_data[self.get_var_name()],
+            self.get_var_name(): out_def_data[f"{self.get_var_name()}_redu"],
         }
         if "mask" in out_def_data:
             output_def["mask"] = out_def_data["mask"]
@@ -46,8 +50,8 @@ class PropertyModel(DPModelCommon, DPPropertyModel_):
 
     def forward(
         self,
-        coord,
-        atype,
+        coord: torch.Tensor,
+        atype: torch.Tensor,
         box: Optional[torch.Tensor] = None,
         fparam: Optional[torch.Tensor] = None,
         aparam: Optional[torch.Tensor] = None,
@@ -62,8 +66,8 @@ class PropertyModel(DPModelCommon, DPPropertyModel_):
             do_atomic_virial=do_atomic_virial,
         )
         model_predict = {}
-        model_predict["atom_property"] = model_ret["property"]
-        model_predict["property"] = model_ret["property_redu"]
+        model_predict[f"atom_{self.get_var_name()}"] = model_ret[self.get_var_name()]
+        model_predict[self.get_var_name()] = model_ret[f"{self.get_var_name()}_redu"]
         if "mask" in model_ret:
             model_predict["mask"] = model_ret["mask"]
         return model_predict
@@ -76,20 +80,25 @@ class PropertyModel(DPModelCommon, DPPropertyModel_):
     @torch.jit.export
     def get_intensive(self) -> bool:
         """Get whether the property is intensive."""
-        return self.model_output_def()["property"].intensive
+        return self.model_output_def()[self.get_var_name()].intensive
+
+    @torch.jit.export
+    def get_var_name(self) -> str:
+        """Get the name of the property."""
+        return self.get_fitting_net().var_name
 
     @torch.jit.export
     def forward_lower(
         self,
-        extended_coord,
-        extended_atype,
-        nlist,
+        extended_coord: torch.Tensor,
+        extended_atype: torch.Tensor,
+        nlist: torch.Tensor,
         mapping: Optional[torch.Tensor] = None,
         fparam: Optional[torch.Tensor] = None,
         aparam: Optional[torch.Tensor] = None,
         do_atomic_virial: bool = False,
         comm_dict: Optional[dict[str, torch.Tensor]] = None,
-    ):
+    ) -> dict[str, torch.Tensor]:
         model_ret = self.forward_common_lower(
             extended_coord,
             extended_atype,
@@ -102,8 +111,8 @@ class PropertyModel(DPModelCommon, DPPropertyModel_):
             extra_nlist_sort=self.need_sorted_nlist_for_lower(),
         )
         model_predict = {}
-        model_predict["atom_property"] = model_ret["property"]
-        model_predict["property"] = model_ret["property_redu"]
+        model_predict[f"atom_{self.get_var_name()}"] = model_ret[self.get_var_name()]
+        model_predict[self.get_var_name()] = model_ret[f"{self.get_var_name()}_redu"]
         if "mask" in model_ret:
             model_predict["mask"] = model_ret["mask"]
         return model_predict

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import logging
 from typing import (
+    Any,
     Optional,
 )
 
@@ -65,8 +66,7 @@ class PairTab:
         n0 = (-1 + np.sqrt(1 + 8 * ncol)) * 0.5
         self.ntypes = int(n0 + 0.1)
         assert self.ntypes * (self.ntypes + 1) // 2 == ncol, (
-            "number of volumes provided in %s does not match guessed number of types %d"
-            % (filename, self.ntypes)
+            f"number of volumes provided in {filename} does not match guessed number of types {self.ntypes}"
         )
 
         # check table data against rcut and update tab_file if needed, table upper boundary is used as rcut if not provided.
@@ -96,7 +96,7 @@ class PairTab:
         }
 
     @classmethod
-    def deserialize(cls, data) -> "PairTab":
+    def deserialize(cls, data: dict[str, Any]) -> "PairTab":
         data = data.copy()
         check_version_compatibility(data.pop("@version", 1), 1, 1)
         data.pop("@class")
@@ -258,7 +258,7 @@ class PairTab:
         )
         return pad_extrapolation
 
-    def _make_data(self):
+    def _make_data(self) -> np.ndarray:
         data = np.zeros(
             [self.ntypes * self.ntypes * 4 * self.nspline], dtype=self.data_type
         )

@@ -346,9 +346,9 @@ class DescrptSeR(DescrptSe):
         suffix : str, optional
             The suffix of the scope
         """
-        assert (
-            not self.filter_resnet_dt
-        ), "Model compression error: descriptor resnet_dt must be false!"
+        assert not self.filter_resnet_dt, (
+            "Model compression error: descriptor resnet_dt must be false!"
+        )
 
         self.compress = True
         self.table = DPTabulate(
@@ -795,6 +795,7 @@ class DescrptSeR(DescrptSe):
                 resnet_dt=self.filter_resnet_dt,
                 variables=self.embedding_net_variables,
                 excluded_types=self.exclude_types,
+                trainable=self.trainable,
                 suffix=suffix,
             ),
             "env_mat": EnvMat(self.rcut, self.rcut_smth).serialize(),

@@ -76,8 +76,8 @@ Other training parameters are given in the {ref}`training <training>` section.
 The sections {ref}`training_data <training/training_data>` and {ref}`validation_data <training/validation_data>` give the training dataset and validation dataset, respectively. Taking the training dataset for example, the keys are explained below:
 
 - {ref}`systems <training/training_data/systems>` provide paths of the training data systems. DeePMD-kit allows you to provide multiple systems with different numbers of atoms. This key can be a `list` or a `str`.
-  - `list`: {ref}`systems <training/training_data/systems>` gives the training data systems.
-  - `str`: {ref}`systems <training/training_data/systems>` should be a valid path. DeePMD-kit will recursively search all data systems in this path.
+  - `str`: {ref}`systems <training/training_data/systems>` should be a valid path. It can be a system directory path (containing 'type.raw') or a parent directory path to recursively search for all system subdirectories.
+  - `list`: {ref}`systems <training/training_data/systems>` gives a list of paths. Each string item in the list is processed the same way as individual string inputs, i.e., each path can be a system directory or a parent directory to recursively search for all system subdirectories.
 - At each training step, DeePMD-kit randomly picks {ref}`batch_size <training/training_data/batch_size>` frame(s) from one of the systems. The probability of using a system is by default in proportion to the number of batches in the system. More options are available for automatically determining the probability of using systems. One can set the key {ref}`auto_prob <training/training_data/auto_prob>` to
   - `"prob_uniform"` all systems are used with the same probability.
   - `"prob_sys_size"` the probability of using a system is proportional to its size (number of frames).
@@ -106,7 +106,9 @@ The sections {ref}`training_data <training/training_data>` and {ref}`validation_
   - `list`: the length of which is the same as the {ref}`systems`. The batch size of each system is given by the elements of the list.
   - `int`: all systems use the same batch size.
   - `"auto"`: the same as `"auto:32"`, see `"auto:N"`
-  - `"auto:N"`: automatically determines the batch size so that the {ref}`batch_size <training/training_data/batch_size>` times the number of atoms in the system is no less than `N`.
+  - `"auto:N"`: automatically determines the batch size so that the {ref}`batch_size <training/training_data/batch_size>` times the number of atoms in the system is **no less than** `N`.
+  - `"max:N"`: automatically determines the batch size so that the {ref}`batch_size <training/training_data/batch_size>` times the number of atoms in the system is **no more than** `N`. The minimum batch size is 1. **Supported backends**: PyTorch {{ pytorch_icon }}, Paddle {{ paddle_icon }}
+  - `"filter:N"`: the same as `"max:N"` but removes the systems with the number of atoms larger than `N` from the data set. Throws an error if no system is left in a dataset. **Supported backends**: PyTorch {{ pytorch_icon }}, Paddle {{ paddle_icon }}
 - The key {ref}`numb_batch <training/validation_data/numb_btch>` in {ref}`validate_data <training/validation_data>` gives the number of batches of model validation. Note that the batches may not be from the same system
 
 The section {ref}`mixed_precision <training/mixed_precision>` specifies the mixed precision settings, which will enable the mixed precision training workflow for DeePMD-kit. The keys are explained below:

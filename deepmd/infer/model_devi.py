@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from typing import (
+    Any,
     Optional,
     overload,
 )
@@ -186,7 +187,7 @@ def calc_model_devi_v(
 
 def write_model_devi_out(
     devi: np.ndarray, fname: str, header: str = "", atomic: bool = False
-):
+) -> np.ndarray:
     """Write output of model deviation.
 
     Parameters
@@ -204,16 +205,16 @@ def write_model_devi_out(
         assert devi.shape[1] == 8
     else:
         assert devi.shape[1] > 8
-    header = "%s\n%10s" % (header, "step")
+    header = f"{header}\n{'step':10s}"
     for item in "vf":
-        header += "%19s%19s%19s" % (
+        header += "{:19s}{:19s}{:19s}".format(
             f"max_devi_{item}",
             f"min_devi_{item}",
             f"avg_devi_{item}",
         )
-    header += "%19s" % "devi_e"
+    header += f"{'devi_e':19s}"
     if atomic:
-        header += "%19s" % "atm_devi_f(N)"
+        header += f"{'atm_devi_f(N)':19s}"
     with open(fname, "ab") as fp:
         np.savetxt(
             fp,
@@ -225,7 +226,7 @@ def write_model_devi_out(
     return devi
 
 
-def _check_tmaps(tmaps, ref_tmap=None):
+def _check_tmaps(tmaps: list[list[str]], ref_tmap: Optional[list[str]] = None) -> bool:
     """Check whether type maps are identical."""
     assert isinstance(tmaps, list)
     if ref_tmap is None:
@@ -241,20 +242,20 @@ def _check_tmaps(tmaps, ref_tmap=None):
 
 
 def calc_model_devi(
-    coord,
-    box,
-    atype,
-    models,
-    fname=None,
-    frequency=1,
-    mixed_type=False,
+    coord: np.ndarray,
+    box: Optional[np.ndarray],
+    atype: np.ndarray,
+    models: list[DeepPot],
+    fname: Optional[str] = None,
+    frequency: int = 1,
+    mixed_type: bool = False,
     fparam: Optional[np.ndarray] = None,
     aparam: Optional[np.ndarray] = None,
     real_data: Optional[dict] = None,
     atomic: bool = False,
     relative: Optional[float] = None,
     relative_v: Optional[float] = None,
-):
+) -> np.ndarray:
     """Python interface to calculate model deviation.
 
     Parameters
@@ -363,8 +364,8 @@ def make_model_devi(
     atomic: bool = False,
     relative: Optional[float] = None,
     relative_v: Optional[float] = None,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> None:
     """Make model deviation calculation.
 
     Parameters

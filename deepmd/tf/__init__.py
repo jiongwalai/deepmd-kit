@@ -11,7 +11,7 @@ from . import (
     descriptor,
     fit,
     loss,
-    nvnmd,
+    apumd,
     utils,
 )
 from .env import (
@@ -21,14 +21,14 @@ from .infer import (
     DeepEval,
     DeepPotential,
 )
-from .infer.data_modifier import (
+from .modifier import (
     DipoleChargeModifier,
 )
 
 set_mkl()
 
 try:
-    from deepmd._version import version as __version__
+    from apumd._version import version as __version__
 except ImportError:
     from .__about__ import (
         __version__,
@@ -38,15 +38,15 @@ except ImportError:
 load_entry_point("deepmd")
 
 __all__ = [
-    "__version__",
-    "descriptor",
-    "fit",
-    "loss",
-    "utils",
-    "cluster",
-    "network",
     "DeepEval",
     "DeepPotential",
     "DipoleChargeModifier",
-    "nvnmd",
+    "__version__",
+    "cluster",
+    "descriptor",
+    "fit",
+    "loss",
+    "network",
+    "apumd",
+    "utils",
 ]

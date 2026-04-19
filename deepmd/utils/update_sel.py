@@ -5,6 +5,7 @@ from abc import (
     abstractmethod,
 )
 from typing import (
+    Any,
     Optional,
     Union,
 )
@@ -49,13 +50,13 @@ class BaseUpdateSel(ABC):
                     # we may skip warning for sel=0, where the user is likely
                     # to exclude such type in the descriptor
                     log.warning(
-                        "sel of type %d is not enough! The expected value is "
-                        "not less than %d, but you set it to %d. The accuracy"
-                        " of your model may get worse." % (ii, tt, dd)
+                        f"sel of type {ii} is not enough! The expected value is "
+                        f"not less than {tt}, but you set it to {dd}. The accuracy"
+                        " of your model may get worse."
                     )
         return min_nbor_dist, sel
 
-    def parse_auto_sel(self, sel) -> bool:
+    def parse_auto_sel(self, sel: Any) -> bool:
         if not isinstance(sel, str):
             return False
         words = sel.split(":")
@@ -64,7 +65,7 @@ class BaseUpdateSel(ABC):
         else:
             return False
 
-    def parse_auto_sel_ratio(self, sel):
+    def parse_auto_sel_ratio(self, sel: Any) -> float:
         if not self.parse_auto_sel(sel):
             raise RuntimeError(f"invalid auto sel format {sel}")
         else:
@@ -77,7 +78,7 @@ class BaseUpdateSel(ABC):
                 raise RuntimeError(f"invalid auto sel format {sel}")
             return ratio
 
-    def wrap_up_4(self, xx):
+    def wrap_up_4(self, xx: int) -> int:
         return 4 * ((int(xx) + 3) // 4)
 
     def get_nbor_stat(
@@ -131,7 +132,7 @@ class BaseUpdateSel(ABC):
     def get_min_nbor_dist(
         self,
         train_data: DeepmdDataSystem,
-    ):
+    ) -> float:
         min_nbor_dist, _ = self.get_nbor_stat(
             train_data,
             None,  # type_map doesn't affect min_nbor_dist

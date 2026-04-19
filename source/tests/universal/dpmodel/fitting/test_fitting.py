@@ -39,7 +39,7 @@ def FittingParamEnergy(
     exclude_types=[],
     precision="float64",
     embedding_width=None,
-    numb_param=0,  # test numb_fparam and numb_aparam together
+    numb_param=0,  # test numb_fparam, numb_aparam and dim_case_embd together
 ):
     input_dict = {
         "ntypes": ntypes,
@@ -51,6 +51,8 @@ def FittingParamEnergy(
         "precision": precision,
         "numb_fparam": numb_param,
         "numb_aparam": numb_param,
+        "dim_case_embd": numb_param,
+        "default_fparam": [1.0] * numb_param if numb_param > 0 else None,
     }
     return input_dict
 
@@ -77,7 +79,7 @@ def FittingParamDos(
     exclude_types=[],
     precision="float64",
     embedding_width=None,
-    numb_param=0,  # test numb_fparam and numb_aparam together
+    numb_param=0,  # test numb_fparam, numb_aparam and dim_case_embd together
 ):
     input_dict = {
         "ntypes": ntypes,
@@ -89,6 +91,7 @@ def FittingParamDos(
         "precision": precision,
         "numb_fparam": numb_param,
         "numb_aparam": numb_param,
+        "dim_case_embd": numb_param,
     }
     return input_dict
 
@@ -115,11 +118,11 @@ def FittingParamDipole(
     exclude_types=[],
     precision="float64",
     embedding_width=None,
-    numb_param=0,  # test numb_fparam and numb_aparam together
+    numb_param=0,  # test numb_fparam, numb_aparam and dim_case_embd together
 ):
-    assert (
-        embedding_width is not None
-    ), "embedding_width for dipole fitting is required."
+    assert embedding_width is not None, (
+        "embedding_width for dipole fitting is required."
+    )
     input_dict = {
         "ntypes": ntypes,
         "dim_descrpt": dim_descrpt,
@@ -131,6 +134,7 @@ def FittingParamDipole(
         "precision": precision,
         "numb_fparam": numb_param,
         "numb_aparam": numb_param,
+        "dim_case_embd": numb_param,
     }
     return input_dict
 
@@ -157,7 +161,7 @@ def FittingParamPolar(
     exclude_types=[],
     precision="float64",
     embedding_width=None,
-    numb_param=0,  # test numb_fparam and numb_aparam together
+    numb_param=0,  # test numb_fparam, numb_aparam and dim_case_embd together
 ):
     assert embedding_width is not None, "embedding_width for polar fitting is required."
     input_dict = {
@@ -171,6 +175,7 @@ def FittingParamPolar(
         "precision": precision,
         "numb_fparam": numb_param,
         "numb_aparam": numb_param,
+        "dim_case_embd": numb_param,
     }
     return input_dict
 
@@ -197,18 +202,21 @@ def FittingParamProperty(
     exclude_types=[],
     precision="float64",
     embedding_width=None,
-    numb_param=0,  # test numb_fparam and numb_aparam together
+    numb_param=0,  # test numb_fparam, numb_aparam and dim_case_embd together
 ):
     input_dict = {
         "ntypes": ntypes,
         "dim_descrpt": dim_descrpt,
         "mixed_types": mixed_types,
         "type_map": type_map,
+        "task_dim": 3,
+        "property_name": "band_prop",
         "exclude_types": exclude_types,
         "seed": GLOBAL_SEED,
         "precision": precision,
         "numb_fparam": numb_param,
         "numb_aparam": numb_param,
+        "dim_case_embd": numb_param,
     }
     return input_dict
 

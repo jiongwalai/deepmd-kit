@@ -19,6 +19,7 @@ from deepmd.dpmodel.utils.nlist import (
 from ..common import (
     INSTALLED_ARRAY_API_STRICT,
     INSTALLED_JAX,
+    INSTALLED_PD,
     INSTALLED_PT,
     INSTALLED_TF,
 )
@@ -43,11 +44,28 @@ if INSTALLED_JAX:
 if INSTALLED_ARRAY_API_STRICT:
     import array_api_strict
 
+if INSTALLED_PD:
+    import paddle
+
+    from deepmd.pd.utils.env import DEVICE as PD_DEVICE
+    from deepmd.pd.utils.nlist import build_neighbor_list as build_neighbor_list_pd
+    from deepmd.pd.utils.nlist import (
+        extend_coord_with_ghosts as extend_coord_with_ghosts_pd,
+    )
+
 
 class DescriptorTest:
     """Useful utilities for descriptor tests."""
 
-    def build_tf_descriptor(self, obj, natoms, coords, atype, box, suffix):
+    def build_tf_descriptor(
+        self,
+        obj: Any,
+        natoms: np.ndarray,
+        coords: np.ndarray,
+        atype: np.ndarray,
+        box: np.ndarray,
+        suffix: str,
+    ) -> tuple[list[Any], dict[Any, np.ndarray]]:
         t_coord = tf.placeholder(GLOBAL_TF_FLOAT_PRECISION, [None], name="i_coord")
         t_type = tf.placeholder(tf.int32, [None], name="i_type")
         t_natoms = tf.placeholder(tf.int32, natoms.shape, name="i_natoms")
@@ -64,7 +82,7 @@ class DescriptorTest:
         )
         # ensure get_dim_out gives the correct shape
         t_des = tf.reshape(t_des, [1, natoms[0], obj.get_dim_out()])
-        return [t_des], {
+        return [t_des, obj.get_rot_mat()], {
             t_coord: coords,
             t_type: atype,
             t_natoms: natoms,
@@ -73,7 +91,13 @@ class DescriptorTest:
         }
 
     def eval_dp_descriptor(
-        self, dp_obj: Any, natoms, coords, atype, box, mixed_types: bool = False
+        self,
+        dp_obj: Any,
+        natoms: np.ndarray,
+        coords: np.ndarray,
+        atype: np.ndarray,
+        box: np.ndarray,
+        mixed_types: bool = False,
     ) -> Any:
         ext_coords, ext_atype, mapping = extend_coord_with_ghosts(
             coords.reshape(1, -1, 3),
@@ -92,7 +116,13 @@ class DescriptorTest:
         return dp_obj(ext_coords, ext_atype, nlist=nlist, mapping=mapping)
 
     def eval_pt_descriptor(
-        self, pt_obj: Any, natoms, coords, atype, box, mixed_types: bool = False
+        self,
+        pt_obj: Any,
+        natoms: np.ndarray,
+        coords: np.ndarray,
+        atype: np.ndarray,
+        box: np.ndarray,
+        mixed_types: bool = False,
     ) -> Any:
         ext_coords, ext_atype, mapping = extend_coord_with_ghosts_pt(
             torch.from_numpy(coords).to(PT_DEVICE).reshape(1, -1, 3),
@@ -114,7 +144,13 @@ class DescriptorTest:
         ]
 
     def eval_jax_descriptor(
-        self, jax_obj: Any, natoms, coords, atype, box, mixed_types: bool = False
+        self,
+        jax_obj: Any,
+        natoms: np.ndarray,
+        coords: np.ndarray,
+        atype: np.ndarray,
+        box: np.ndarray,
+        mixed_types: bool = False,
     ) -> Any:
         ext_coords, ext_atype, mapping = extend_coord_with_ghosts(
             jnp.array(coords).reshape(1, -1, 3),
@@ -135,13 +171,41 @@ class DescriptorTest:
             for x in jax_obj(ext_coords, ext_atype, nlist=nlist, mapping=mapping)
         ]
 
+    def eval_pd_descriptor(
+        self,
+        pd_obj: Any,
+        natoms: np.ndarray,
+        coords: np.ndarray,
+        atype: np.ndarray,
+        box: np.ndarray,
+        mixed_types: bool = False,
+    ) -> Any:
+        ext_coords, ext_atype, mapping = extend_coord_with_ghosts_pd(
+            paddle.to_tensor(coords).to(PD_DEVICE).reshape([1, -1, 3]),
+            paddle.to_tensor(atype).to(PD_DEVICE).reshape([1, -1]),
+            paddle.to_tensor(box).to(PD_DEVICE).reshape([1, 3, 3]),
+            pd_obj.get_rcut(),
+        )
+        nlist = build_neighbor_list_pd(
+            ext_coords,
+            ext_atype,
+            natoms[0],
+            pd_obj.get_rcut(),
+            pd_obj.get_sel(),
+            distinguish_types=(not mixed_types),
+        )
+        return [
+            x.detach().cpu().numpy() if paddle.is_tensor(x) else x
+            for x in pd_obj(ext_coords, ext_atype, nlist=nlist, mapping=mapping)
+        ]
+
     def eval_array_api_strict_descriptor(
         self,
         array_api_strict_obj: Any,
-        natoms,
-        coords,
-        atype,
-        box,
+        natoms: np.ndarray,
+        coords: np.ndarray,
+        atype: np.ndarray,
+        box: np.ndarray,
         mixed_types: bool = False,
     ) -> Any:
         ext_coords, ext_atype, mapping = extend_coord_with_ghosts(

@@ -32,6 +32,7 @@ class EnergyFittingNet(InvarFitting):
         resnet_dt: bool = True,
         numb_fparam: int = 0,
         numb_aparam: int = 0,
+        dim_case_embd: int = 0,
         rcond: Optional[float] = None,
         tot_ener_zero: bool = False,
         trainable: Optional[list[bool]] = None,
@@ -45,6 +46,7 @@ class EnergyFittingNet(InvarFitting):
         exclude_types: list[int] = [],
         type_map: Optional[list[str]] = None,
         seed: Optional[Union[int, list[int]]] = None,
+        default_fparam: Optional[list] = None,
     ) -> None:
         super().__init__(
             var_name="energy",
@@ -55,6 +57,7 @@ class EnergyFittingNet(InvarFitting):
             resnet_dt=resnet_dt,
             numb_fparam=numb_fparam,
             numb_aparam=numb_aparam,
+            dim_case_embd=dim_case_embd,
             rcond=rcond,
             tot_ener_zero=tot_ener_zero,
             trainable=trainable,
@@ -68,12 +71,13 @@ class EnergyFittingNet(InvarFitting):
             exclude_types=exclude_types,
             type_map=type_map,
             seed=seed,
+            default_fparam=default_fparam,
         )
 
     @classmethod
     def deserialize(cls, data: dict) -> "GeneralFitting":
         data = data.copy()
-        check_version_compatibility(data.pop("@version", 1), 2, 1)
+        check_version_compatibility(data.pop("@version", 1), 4, 1)
         data.pop("var_name")
         data.pop("dim_out")
         return super().deserialize(data)

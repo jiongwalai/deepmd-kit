@@ -353,9 +353,9 @@ class DescrptSeT(DescrptSe):
         suffix : str, optional
             The suffix of the scope
         """
-        assert (
-            not self.filter_resnet_dt
-        ), "Model compression error: descriptor resnet_dt must be false!"
+        assert not self.filter_resnet_dt, (
+            "Model compression error: descriptor resnet_dt must be false!"
+        )
 
         self.compress = True
         self.table = DPTabulate(
@@ -726,6 +726,7 @@ class DescrptSeT(DescrptSe):
         resnet_dt: bool,
         variables: dict,
         excluded_types: set[tuple[int, int]] = set(),
+        trainable: bool = True,
         suffix: str = "",
     ) -> dict:
         """Serialize network.
@@ -748,6 +749,8 @@ class DescrptSeT(DescrptSe):
             The input variables
         excluded_types : set[tuple[int, int]], optional
             The excluded types
+        trainable : bool, optional
+            Whether the network is trainable
         suffix : str, optional
             The suffix of the scope
 
@@ -771,6 +774,7 @@ class DescrptSeT(DescrptSe):
                 activation_function=activation_function,
                 resnet_dt=resnet_dt,
                 precision=self.precision.name,
+                trainable=trainable,
             )
             embeddings[(type_i, type_j)].clear()
 
@@ -805,6 +809,7 @@ class DescrptSeT(DescrptSe):
                     activation_function=activation_function,
                     resnet_dt=resnet_dt,
                     precision=self.precision.name,
+                    trainable=trainable,
                 )
             assert embeddings[network_idx] is not None
             if weight_name == "idt":
@@ -830,9 +835,9 @@ class DescrptSeT(DescrptSe):
         """
         embedding_net_variables = {}
         embeddings = NetworkCollection.deserialize(data)
-        assert (
-            embeddings.ndim == 2
-        ), "Embeddings in descriptor 'se_e3' must have two dimensions."
+        assert embeddings.ndim == 2, (
+            "Embeddings in descriptor 'se_e3' must have two dimensions."
+        )
         for ii in range(embeddings.ntypes**embeddings.ndim):
             net_idx = []
             rest_ii = ii
@@ -941,6 +946,7 @@ class DescrptSeT(DescrptSe):
                 resnet_dt=self.filter_resnet_dt,
                 variables=self.embedding_net_variables,
                 excluded_types=self.exclude_types,
+                trainable=self.trainable,
                 suffix=suffix,
             ),
             "env_mat": EnvMat(self.rcut_r, self.rcut_r_smth).serialize(),

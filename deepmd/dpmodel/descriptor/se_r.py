@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from typing import (
     Any,
+    Callable,
     NoReturn,
     Optional,
     Union,
@@ -14,6 +15,9 @@ from deepmd.dpmodel import (
     PRECISION_DICT,
     NativeOP,
 )
+from deepmd.dpmodel.array_api import (
+    Array,
+)
 from deepmd.dpmodel.common import (
     cast_precision,
     get_xp_precision,
@@ -24,6 +28,9 @@ from deepmd.dpmodel.utils import (
     EnvMat,
     NetworkCollection,
     PairExcludeMask,
+)
+from deepmd.dpmodel.utils.env_mat_stat import (
+    EnvMatStatSe,
 )
 from deepmd.dpmodel.utils.seed import (
     child_seed,
@@ -162,6 +169,7 @@ class DescrptSeR(NativeOP, BaseDescriptor):
                 self.resnet_dt,
                 self.precision,
                 seed=child_seed(seed, ii),
+                trainable=trainable,
             )
         self.embeddings = embeddings
         self.env_mat = EnvMat(self.rcut, self.rcut_smth, protection=self.env_protection)
@@ -174,8 +182,9 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         )
         self.orig_sel = self.sel
         self.sel_cumsum = [0, *np.cumsum(self.sel).tolist()]
+        self.ndescrpt = self.nnei
 
-    def __setitem__(self, key, value) -> None:
+    def __setitem__(self, key: str, value: Array) -> None:
         if key in ("avg", "data_avg", "davg"):
             self.davg = value
         elif key in ("std", "data_std", "dstd"):
@@ -183,7 +192,7 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         else:
             raise KeyError(key)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Array:
         if key in ("avg", "data_avg", "davg"):
             return self.davg
         elif key in ("std", "data_std", "dstd"):
@@ -192,11 +201,11 @@ class DescrptSeR(NativeOP, BaseDescriptor):
             raise KeyError(key)
 
     @property
-    def dim_out(self):
+    def dim_out(self) -> int:
         """Returns the output dimension of this descriptor."""
         return self.get_dim_out()
 
-    def get_dim_out(self):
+    def get_dim_out(self) -> int:
         """Returns the output dimension of this descriptor."""
         return self.neuron[-1]
 
@@ -204,7 +213,7 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         """Returns the embedding (g2) dimension of this descriptor."""
         raise NotImplementedError
 
-    def get_rcut(self):
+    def get_rcut(self) -> float:
         """Returns cutoff radius."""
         return self.rcut
 
@@ -212,7 +221,7 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         """Returns the radius where the neighbor information starts to smoothly decay to 0."""
         return self.rcut_smth
 
-    def get_sel(self):
+    def get_sel(self) -> list[int]:
         """Returns cutoff radius."""
         return self.sel
 
@@ -234,7 +243,9 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         """Returns the protection of building environment matrix."""
         return self.env_protection
 
-    def share_params(self, base_class, shared_level, resume=False) -> NoReturn:
+    def share_params(
+        self, base_class: Any, shared_level: Any, resume: bool = False
+    ) -> NoReturn:
         """
         Share the parameters of self to the base_class with shared_level during multitask training.
         If not start from checkpoint (resume is False),
@@ -243,7 +254,7 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         raise NotImplementedError
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat=None
+        self, type_map: list[str], model_with_new_type_stat: Optional[Any] = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
@@ -263,29 +274,63 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         return self.type_map
 
     def compute_input_stats(
-        self, merged: list[dict], path: Optional[DPPath] = None
-    ) -> NoReturn:
-        """Update mean and stddev for descriptor elements."""
-        raise NotImplementedError
+        self,
+        merged: Union[Callable[[], list[dict]], list[dict]],
+        path: Optional[DPPath] = None,
+    ) -> None:
+        """
+        Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
+
+        Parameters
+        ----------
+        merged : Union[Callable[[], list[dict]], list[dict]]
+            - list[dict]: A list of data samples from various data systems.
+                Each element, `merged[i]`, is a data dictionary containing `keys`: `paddle.Tensor`
+                originating from the `i`-th data system.
+            - Callable[[], list[dict]]: A lazy function that returns data samples in the above format
+                only when needed. Since the sampling process can be slow and memory-intensive,
+                the lazy function helps by only sampling once.
+        path : Optional[DPPath]
+            The path to the stat file.
+
+        """
+        env_mat_stat = EnvMatStatSe(self)
+        if path is not None:
+            path = path / env_mat_stat.get_hash()
+        if path is None or not path.is_dir():
+            if callable(merged):
+                # only get data for once
+                sampled = merged()
+            else:
+                sampled = merged
+        else:
+            sampled = []
+        env_mat_stat.load_or_compute_stats(sampled, path)
+        self.stats = env_mat_stat.stats
+        mean, stddev = env_mat_stat()
+        xp = array_api_compat.array_namespace(self.dstd)
+        if not self.set_davg_zero:
+            self.davg = xp.asarray(mean, dtype=self.davg.dtype, copy=True)
+        self.dstd = xp.asarray(stddev, dtype=self.dstd.dtype, copy=True)
 
     def set_stat_mean_and_stddev(
         self,
-        mean: np.ndarray,
-        stddev: np.ndarray,
+        mean: Array,
+        stddev: Array,
     ) -> None:
         """Update mean and stddev for descriptor."""
         self.davg = mean
         self.dstd = stddev
 
-    def get_stat_mean_and_stddev(self) -> tuple[np.ndarray, np.ndarray]:
+    def get_stat_mean_and_stddev(self) -> tuple[Array, Array]:
         """Get mean and stddev for descriptor."""
         return self.davg, self.dstd
 
     def cal_g(
         self,
-        ss,
-        ll,
-    ):
+        ss: Array,
+        ll: int,
+    ) -> Array:
         xp = array_api_compat.array_namespace(ss)
         nf, nloc, nnei = ss.shape[0:3]
         ss = xp.reshape(ss, (nf, nloc, nnei, 1))
@@ -296,11 +341,11 @@ class DescrptSeR(NativeOP, BaseDescriptor):
     @cast_precision
     def call(
         self,
-        coord_ext,
-        atype_ext,
-        nlist,
-        mapping: Optional[np.ndarray] = None,
-    ):
+        coord_ext: Array,
+        atype_ext: Array,
+        nlist: Array,
+        mapping: Optional[Array] = None,
+    ) -> Array:
         """Compute the descriptor.
 
         Parameters
@@ -334,7 +379,12 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         del mapping
         # nf x nloc x nnei x 1
         rr, diff, ww = self.env_mat.call(
-            coord_ext, atype_ext, nlist, self.davg, self.dstd, True
+            coord_ext,
+            atype_ext,
+            nlist,
+            self.davg[...],
+            self.dstd[...],
+            True,
         )
         nf, nloc, nnei, _ = rr.shape
         sec = self.sel_cumsum
@@ -411,7 +461,7 @@ class DescrptSeR(NativeOP, BaseDescriptor):
         train_data: DeepmdDataSystem,
         type_map: Optional[list[str]],
         local_jdata: dict,
-    ) -> tuple[dict, Optional[float]]:
+    ) -> tuple[Array, Array]:
         """Update the selection and perform neighbor statistics.
 
         Parameters

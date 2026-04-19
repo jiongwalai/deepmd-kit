@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+import warnings
 from typing import (
+    Any,
     Callable,
     Optional,
     Union,
@@ -23,7 +25,7 @@ from deepmd.pt.utils import (
 )
 from deepmd.pt.utils.env import (
     PRECISION_DICT,
-    RESERVED_PRECISON_DICT,
+    RESERVED_PRECISION_DICT,
 )
 from deepmd.pt.utils.tabulate import (
     DPTabulate,
@@ -236,8 +238,8 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
         exclude_types: list[tuple[int, int]] = [],
         env_protection: float = 0.0,
         scaling_factor: int = 1.0,
-        normalize=True,
-        temperature=None,
+        normalize: bool = True,
+        temperature: Optional[float] = None,
         concat_output_tebd: bool = True,
         trainable: bool = True,
         trainable_ln: bool = True,
@@ -250,7 +252,7 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
         use_tebd_bias: bool = False,
         type_map: Optional[list[str]] = None,
         # not implemented
-        spin=None,
+        spin: Optional[Any] = None,
         type: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -298,11 +300,13 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
             trainable_ln=trainable_ln,
             ln_eps=ln_eps,
             seed=child_seed(seed, 1),
+            trainable=trainable,
         )
         self.use_econf_tebd = use_econf_tebd
         self.use_tebd_bias = use_tebd_bias
         self.type_map = type_map
-        self.compress = False
+        self.tebd_compress = False
+        self.geo_compress = False
         self.type_embedding = TypeEmbedNet(
             ntypes,
             tebd_dim,
@@ -311,6 +315,7 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
             use_econf_tebd=use_econf_tebd,
             use_tebd_bias=use_tebd_bias,
             type_map=type_map,
+            trainable=trainable,
         )
         self.prec = PRECISION_DICT[precision]
         self.tebd_dim = tebd_dim
@@ -378,15 +383,17 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
         """Returns the protection of building environment matrix."""
         return self.se_atten.get_env_protection()
 
-    def share_params(self, base_class, shared_level, resume=False) -> None:
+    def share_params(
+        self, base_class: Any, shared_level: int, resume: bool = False
+    ) -> None:
         """
         Share the parameters of self to the base_class with shared_level during multitask training.
         If not start from checkpoint (resume is False),
         some separated parameters (e.g. mean and stddev) will be re-calculated across different classes.
         """
-        assert (
-            self.__class__ == base_class.__class__
-        ), "Only descriptors of the same type can share params!"
+        assert self.__class__ == base_class.__class__, (
+            "Only descriptors of the same type can share params!"
+        )
         # For DPA1 descriptors, the user-defined share-level
         # shared_level: 0
         # share all parameters in both type_embedding and se_atten
@@ -402,18 +409,18 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
             raise NotImplementedError
 
     @property
-    def dim_out(self):
+    def dim_out(self) -> int:
         return self.get_dim_out()
 
     @property
-    def dim_emb(self):
+    def dim_emb(self) -> int:
         return self.get_dim_emb()
 
     def compute_input_stats(
         self,
         merged: Union[Callable[[], list[dict]], list[dict]],
         path: Optional[DPPath] = None,
-    ):
+    ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
 
@@ -446,14 +453,14 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
         return self.se_atten.mean, self.se_atten.stddev
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat=None
+        self, type_map: list[str], model_with_new_type_stat: Optional[Any] = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
         """
-        assert (
-            self.type_map is not None
-        ), "'type_map' must be defined when performing type changing!"
+        assert self.type_map is not None, (
+            "'type_map' must be defined when performing type changing!"
+        )
         remap_index, has_new_type = get_index_between_two_maps(self.type_map, type_map)
         obj = self.se_atten
         obj.ntypes = len(type_map)
@@ -505,10 +512,12 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
             "use_tebd_bias": self.use_tebd_bias,
             "type_map": self.type_map,
             # make deterministic
-            "precision": RESERVED_PRECISON_DICT[obj.prec],
+            "precision": RESERVED_PRECISION_DICT[obj.prec],
             "embeddings": obj.filter_layers.serialize(),
             "attention_layers": obj.dpa1_attention.serialize(),
-            "env_mat": DPEnvMat(obj.rcut, obj.rcut_smth).serialize(),
+            "env_mat": DPEnvMat(
+                obj.rcut, obj.rcut_smth, obj.env_protection
+            ).serialize(),
             "type_embedding": self.type_embedding.embedding.serialize(),
             "exclude_types": obj.exclude_types,
             "env_protection": obj.env_protection,
@@ -544,7 +553,7 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
             data["use_tebd_bias"] = True
         obj = cls(**data)
 
-        def t_cvt(xx):
+        def t_cvt(xx: Any) -> torch.Tensor:
             return torch.tensor(xx, dtype=obj.se_atten.prec, device=env.DEVICE)
 
         obj.type_embedding.embedding = TypeEmbedNetConsistent.deserialize(
@@ -585,12 +594,17 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
         check_frequency
             The overflow check frequency
         """
-        # do some checks before the mocel compression process
-        if self.compress:
+        # do some checks before the model compression process
+        if self.tebd_compress or self.geo_compress:
             raise ValueError("Compression is already enabled.")
-        assert (
-            not self.se_atten.resnet_dt
-        ), "Model compression error: descriptor resnet_dt must be false!"
+
+        if self.tebd_input_mode != "strip":
+            raise RuntimeError("Type embedding compression only works in strip mode")
+
+        assert not self.se_atten.resnet_dt, (
+            "Model compression error: descriptor resnet_dt must be false!"
+        )
+
         for tt in self.se_atten.exclude_types:
             if (tt[0] not in range(self.se_atten.ntypes)) or (
                 tt[1] not in range(self.se_atten.ntypes)
@@ -602,6 +616,7 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
                     + str(self.se_atten.ntypes)
                     + "!"
                 )
+
         if (
             self.se_atten.ntypes * self.se_atten.ntypes
             - len(self.se_atten.exclude_types)
@@ -611,34 +626,38 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
                 "Empty embedding-nets are not supported in model compression!"
             )
 
-        if self.se_atten.attn_layer != 0:
-            raise RuntimeError("Cannot compress model when attention layer is not 0.")
+        # Enable type embedding compression
+        self.se_atten.type_embedding_compression(self.type_embedding)
+        self.tebd_compress = True
 
-        if self.tebd_input_mode != "strip":
-            raise RuntimeError("Cannot compress model when tebd_input_mode == 'concat'")
+        if self.se_atten.attn_layer == 0:
+            data = self.serialize()
+            self.table = DPTabulate(
+                self,
+                data["neuron"],
+                data["type_one_side"],
+                data["exclude_types"],
+                ActivationFn(data["activation_function"]),
+            )
+            self.table_config = [
+                table_extrapolate,
+                table_stride_1,
+                table_stride_2,
+                check_frequency,
+            ]
+            self.lower, self.upper = self.table.build(
+                min_nbor_dist, table_extrapolate, table_stride_1, table_stride_2
+            )
 
-        data = self.serialize()
-        self.table = DPTabulate(
-            self,
-            data["neuron"],
-            data["type_one_side"],
-            data["exclude_types"],
-            ActivationFn(data["activation_function"]),
-        )
-        self.table_config = [
-            table_extrapolate,
-            table_stride_1,
-            table_stride_2,
-            check_frequency,
-        ]
-        self.lower, self.upper = self.table.build(
-            min_nbor_dist, table_extrapolate, table_stride_1, table_stride_2
-        )
-
-        self.se_atten.enable_compression(
-            self.table.data, self.table_config, self.lower, self.upper
-        )
-        self.compress = True
+            self.se_atten.enable_compression(
+                self.table.data, self.table_config, self.lower, self.upper
+            )
+            self.geo_compress = True
+        else:
+            warnings.warn(
+                "Attention layer is not 0, only type embedding is compressed. Geometric part is not compressed.",
+                UserWarning,
+            )
 
     def forward(
         self,
@@ -647,7 +666,13 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
         nlist: torch.Tensor,
         mapping: Optional[torch.Tensor] = None,
         comm_dict: Optional[dict[str, torch.Tensor]] = None,
-    ):
+    ) -> tuple[
+        torch.Tensor,
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+    ]:
         """Compute the descriptor.
 
         Parameters
@@ -704,10 +729,12 @@ class DescrptDPA1(BaseDescriptor, torch.nn.Module):
 
         return (
             g1.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
-            rot_mat.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
+            rot_mat.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION)
+            if rot_mat is not None
+            else None,
             g2.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION) if g2 is not None else None,
-            h2.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
-            sw.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION),
+            h2.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION) if h2 is not None else None,
+            sw.to(dtype=env.GLOBAL_PT_FLOAT_PRECISION) if sw is not None else None,
         )
 
     @classmethod

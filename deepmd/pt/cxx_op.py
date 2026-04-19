@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 import platform
+from ctypes import (
+    CDLL,
+    RTLD_GLOBAL,
+)
+from importlib import (
+    metadata,
+)
 
 import torch
 from packaging.version import (
@@ -50,16 +57,11 @@ def load_library(module_name: str) -> bool:
             if PT_CXX11_ABI_FLAG != pt_cxx11_abi_flag:
                 raise RuntimeError(
                     "This deepmd-kit package was compiled with "
-                    "CXX11_ABI_FLAG=%d, but PyTorch runtime was compiled "
-                    "with CXX11_ABI_FLAG=%d. These two library ABIs are "
-                    "incompatible and thus an error is raised when loading %s. "
+                    f"CXX11_ABI_FLAG={PT_CXX11_ABI_FLAG}, but PyTorch runtime was compiled "
+                    f"with CXX11_ABI_FLAG={pt_cxx11_abi_flag}. These two library ABIs are "
+                    f"incompatible and thus an error is raised when loading {module_name}. "
                     "You need to rebuild deepmd-kit against this PyTorch "
                     "runtime."
-                    % (
-                        PT_CXX11_ABI_FLAG,
-                        pt_cxx11_abi_flag,
-                        module_name,
-                    )
                 ) from e
 
             # different versions may cause incompatibility, see TF
@@ -91,6 +93,29 @@ def load_library(module_name: str) -> bool:
         return True
     return False
 
+
+def load_mpi_library() -> None:
+    """Load MPI library.
+
+    When building with cibuildwheel, the link to the MPI library is lost
+    after the wheel is repaired.
+    """
+    if platform.system() == "Linux":
+        libname = "libmpi.so.*"
+    elif platform.system() == "Darwin":
+        libname = "libmpi.*.dylib"
+    else:
+        raise RuntimeError("Unsupported platform")
+    MPI_LIB = next(p for p in metadata.files("mpich") if p.match(libname)).locate()
+    # use CDLL to load the library
+    CDLL(MPI_LIB, mode=RTLD_GLOBAL)
+
+
+if GLOBAL_CONFIG.get("cibuildwheel", "0") == "1" and platform.system() in (
+    "Linux",
+    "Darwin",
+):
+    load_mpi_library()
 
 ENABLE_CUSTOMIZED_OP = load_library("deepmd_op_pt")
 

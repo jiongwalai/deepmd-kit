@@ -7,6 +7,7 @@ from functools import (
     wraps,
 )
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Optional,
@@ -20,6 +21,10 @@ import numpy as np
 from deepmd.common import (
     VALID_PRECISION,
 )
+
+if TYPE_CHECKING:
+    from deepmd.dpmodel.array_api import Array
+
 from deepmd.env import (
     GLOBAL_ENER_FLOAT_PRECISION,
     GLOBAL_NP_FLOAT_PRECISION,
@@ -43,7 +48,7 @@ PRECISION_DICT = {
 }
 assert VALID_PRECISION.issubset(PRECISION_DICT.keys())
 
-RESERVED_PRECISON_DICT = {
+RESERVED_PRECISION_DICT = {
     np.float16: "float16",
     np.float32: "float32",
     np.float64: "float64",
@@ -52,14 +57,14 @@ RESERVED_PRECISON_DICT = {
     ml_dtypes.bfloat16: "bfloat16",
     np.bool_: "bool",
 }
-assert set(RESERVED_PRECISON_DICT.keys()) == set(PRECISION_DICT.values())
+assert set(RESERVED_PRECISION_DICT.keys()) == set(PRECISION_DICT.values())
 DEFAULT_PRECISION = "float64"
 
 
 def get_xp_precision(
     xp: Any,
     precision: str,
-):
+) -> Any:
     """Get the precision from the API compatible namespace."""
     if precision == "float16" or precision == "half":
         return xp.float16
@@ -74,9 +79,9 @@ def get_xp_precision(
     elif precision == "bool":
         return bool
     elif precision == "default":
-        return get_xp_precision(xp, RESERVED_PRECISON_DICT[PRECISION_DICT[precision]])
+        return get_xp_precision(xp, RESERVED_PRECISION_DICT[PRECISION_DICT[precision]])
     elif precision == "global":
-        return get_xp_precision(xp, RESERVED_PRECISON_DICT[GLOBAL_NP_FLOAT_PRECISION])
+        return get_xp_precision(xp, RESERVED_PRECISION_DICT[GLOBAL_NP_FLOAT_PRECISION])
     elif precision == "bfloat16":
         return ml_dtypes.bfloat16
     else:
@@ -87,16 +92,16 @@ class NativeOP(ABC):
     """The unit operation of a native model."""
 
     @abstractmethod
-    def call(self, *args, **kwargs):
+    def call(self, *args: Any, **kwargs: Any) -> "Array":
         """Forward pass in NumPy implementation."""
         pass
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any) -> "Array":
         """Forward pass in NumPy implementation."""
         return self.call(*args, **kwargs)
 
 
-def to_numpy_array(x: Any) -> Optional[np.ndarray]:
+def to_numpy_array(x: Optional["Array"]) -> Optional[np.ndarray]:
     """Convert an array to a NumPy array.
 
     Parameters
@@ -158,7 +163,7 @@ def cast_precision(func: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         # only convert tensors
         returned_tensor = func(
             self,
@@ -185,13 +190,13 @@ def cast_precision(func: Callable[..., Any]) -> Callable[..., Any]:
 
 @overload
 def safe_cast_array(
-    input: np.ndarray, from_precision: str, to_precision: str
-) -> np.ndarray: ...
+    input: "Array", from_precision: str, to_precision: str
+) -> "Array": ...
 @overload
 def safe_cast_array(input: None, from_precision: str, to_precision: str) -> None: ...
 def safe_cast_array(
-    input: Optional[np.ndarray], from_precision: str, to_precision: str
-) -> Optional[np.ndarray]:
+    input: Optional["Array"], from_precision: str, to_precision: str
+) -> Optional["Array"]:
     """Convert an array from a precision to another precision.
 
     If input is not an array or without the specific precision, the method will not
@@ -201,7 +206,7 @@ def safe_cast_array(
 
     Parameters
     ----------
-    input : np.ndarray or None
+    input : Array or None
         Input array
     from_precision : str
         Array data type that is casted from
@@ -221,10 +226,10 @@ def safe_cast_array(
 
 
 __all__ = [
-    "GLOBAL_NP_FLOAT_PRECISION",
-    "GLOBAL_ENER_FLOAT_PRECISION",
-    "PRECISION_DICT",
-    "RESERVED_PRECISON_DICT",
     "DEFAULT_PRECISION",
+    "GLOBAL_ENER_FLOAT_PRECISION",
+    "GLOBAL_NP_FLOAT_PRECISION",
+    "PRECISION_DICT",
+    "RESERVED_PRECISION_DICT",
     "NativeOP",
 ]

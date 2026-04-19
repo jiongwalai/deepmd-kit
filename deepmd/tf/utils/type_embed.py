@@ -22,8 +22,8 @@ from deepmd.tf.env import (
     TYPE_EMBEDDING_PATTERN,
     tf,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.graph import (
     get_type_embedding_net_variables_from_graph_def,
@@ -187,12 +187,14 @@ class TypeEmbedNet:
             )
         ebd_type = tf.reshape(ebd_type, [ntypes, -1])
         name = "type_embed_net" + suffix
+        if apumd_cfg.enable:
+            self.use_tebd_bias = True
         if (
-            nvnmd_cfg.enable
-            and (nvnmd_cfg.version == 1)
-            and (nvnmd_cfg.restore_descriptor or nvnmd_cfg.restore_fitting_net)
+            apumd_cfg.enable
+            and (apumd_cfg.version == 1)
+            and (apumd_cfg.restore_descriptor or apumd_cfg.restore_fitting_net)
         ):
-            self.type_embedding_net_variables = nvnmd_cfg.get_dp_init_weights()
+            self.type_embedding_net_variables = apumd_cfg.get_dp_init_weights()
         with tf.variable_scope(name, reuse=reuse):
             ebd_type = embedding_net(
                 ebd_type,

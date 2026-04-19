@@ -177,7 +177,7 @@ void DeepSpinPT::compute(ENERGYVTYPE& ener,
       torch::from_blob(atype_64.data(), {1, nall_real}, int_option).to(device);
   c10::optional<torch::Tensor> mapping_tensor;
   if (ago == 0) {
-    nlist_data.copy_from_nlist(lmp_list);
+    nlist_data.copy_from_nlist(lmp_list, nall - nghost);
     nlist_data.shuffle_exclude_empty(fwd_map);
     nlist_data.padding();
     if (do_message_passing) {
@@ -205,13 +205,13 @@ void DeepSpinPT::compute(ENERGYVTYPE& ener,
       torch::Tensor sendlist_tensor =
           torch::from_blob(lmp_list.sendlist, {total_send}, int32_option);
       torch::Tensor has_spin = torch::tensor({1}, int32_option);
-      comm_dict.insert("send_list", sendlist_tensor);
-      comm_dict.insert("send_proc", sendproc_tensor);
-      comm_dict.insert("recv_proc", recvproc_tensor);
-      comm_dict.insert("send_num", sendnum_tensor);
-      comm_dict.insert("recv_num", recvnum_tensor);
-      comm_dict.insert("communicator", communicator_tensor);
-      comm_dict.insert("has_spin", has_spin);
+      comm_dict.insert_or_assign("send_list", sendlist_tensor);
+      comm_dict.insert_or_assign("send_proc", sendproc_tensor);
+      comm_dict.insert_or_assign("recv_proc", recvproc_tensor);
+      comm_dict.insert_or_assign("send_num", sendnum_tensor);
+      comm_dict.insert_or_assign("recv_num", recvnum_tensor);
+      comm_dict.insert_or_assign("communicator", communicator_tensor);
+      comm_dict.insert_or_assign("has_spin", has_spin);
     }
   }
   at::Tensor firstneigh = createNlistTensor2(nlist_data.jlist);

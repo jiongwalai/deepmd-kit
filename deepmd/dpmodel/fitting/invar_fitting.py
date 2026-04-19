@@ -6,10 +6,11 @@ from typing import (
     Union,
 )
 
-import numpy as np
-
 from deepmd.dpmodel import (
     DEFAULT_PRECISION,
+)
+from deepmd.dpmodel.array_api import (
+    Array,
 )
 from deepmd.dpmodel.common import (
     cast_precision,
@@ -110,6 +111,9 @@ class InvarFitting(GeneralFitting):
             Atomic contributions of the excluded atom types are set zero.
     type_map: list[str], Optional
             A list of strings. Give the name to each type of atoms.
+    default_fparam: list[float], optional
+        The default frame parameter. If set, when `fparam.npy` files are not included in the data system,
+        this value will be used as the default value for the frame parameter in the fitting net.
 
     """
 
@@ -123,7 +127,8 @@ class InvarFitting(GeneralFitting):
         resnet_dt: bool = True,
         numb_fparam: int = 0,
         numb_aparam: int = 0,
-        bias_atom: Optional[np.ndarray] = None,
+        dim_case_embd: int = 0,
+        bias_atom: Optional[Array] = None,
         rcond: Optional[float] = None,
         tot_ener_zero: bool = False,
         trainable: Optional[list[bool]] = None,
@@ -137,6 +142,7 @@ class InvarFitting(GeneralFitting):
         exclude_types: list[int] = [],
         type_map: Optional[list[str]] = None,
         seed: Optional[Union[int, list[int]]] = None,
+        default_fparam: Optional[list[float]] = None,
     ) -> None:
         if tot_ener_zero:
             raise NotImplementedError("tot_ener_zero is not implemented")
@@ -155,6 +161,7 @@ class InvarFitting(GeneralFitting):
             resnet_dt=resnet_dt,
             numb_fparam=numb_fparam,
             numb_aparam=numb_aparam,
+            dim_case_embd=dim_case_embd,
             rcond=rcond,
             bias_atom_e=bias_atom,
             tot_ener_zero=tot_ener_zero,
@@ -171,6 +178,7 @@ class InvarFitting(GeneralFitting):
             else [x is not None for x in atom_ener],
             type_map=type_map,
             seed=seed,
+            default_fparam=default_fparam,
         )
 
     def serialize(self) -> dict:
@@ -183,18 +191,18 @@ class InvarFitting(GeneralFitting):
     @classmethod
     def deserialize(cls, data: dict) -> "GeneralFitting":
         data = data.copy()
-        check_version_compatibility(data.pop("@version", 1), 2, 1)
+        check_version_compatibility(data.pop("@version", 1), 4, 1)
         return super().deserialize(data)
 
-    def _net_out_dim(self):
+    def _net_out_dim(self) -> int:
         """Set the FittingNet output dim."""
         return self.dim_out
 
-    def compute_output_stats(self, merged) -> NoReturn:
+    def compute_output_stats(self, merged: Any) -> NoReturn:
         """Update the output bias for fitting net."""
         raise NotImplementedError
 
-    def output_def(self):
+    def output_def(self) -> FittingOutputDef:
         return FittingOutputDef(
             [
                 OutputVariableDef(
@@ -210,14 +218,14 @@ class InvarFitting(GeneralFitting):
     @cast_precision
     def call(
         self,
-        descriptor: np.ndarray,
-        atype: np.ndarray,
-        gr: Optional[np.ndarray] = None,
-        g2: Optional[np.ndarray] = None,
-        h2: Optional[np.ndarray] = None,
-        fparam: Optional[np.ndarray] = None,
-        aparam: Optional[np.ndarray] = None,
-    ) -> dict[str, np.ndarray]:
+        descriptor: Array,
+        atype: Array,
+        gr: Optional[Array] = None,
+        g2: Optional[Array] = None,
+        h2: Optional[Array] = None,
+        fparam: Optional[Array] = None,
+        aparam: Optional[Array] = None,
+    ) -> dict[str, Array]:
         """Calculate the fitting.
 
         Parameters

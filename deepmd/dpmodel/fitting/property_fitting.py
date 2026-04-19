@@ -4,13 +4,18 @@ from typing import (
     Union,
 )
 
-import numpy as np
-
+from deepmd.dpmodel.array_api import (
+    Array,
+)
 from deepmd.dpmodel.common import (
     DEFAULT_PRECISION,
 )
 from deepmd.dpmodel.fitting.invar_fitting import (
     InvarFitting,
+)
+from deepmd.dpmodel.output_def import (
+    FittingOutputDef,
+    OutputVariableDef,
 )
 from deepmd.utils.version import (
     check_version_compatibility,
@@ -41,10 +46,9 @@ class PropertyFittingNet(InvarFitting):
             this list is of length :math:`N_l + 1`, specifying if the hidden layers and the output layer are trainable.
     intensive
             Whether the fitting property is intensive.
-    bias_method
-            The method of applying the bias to each atomic output, user can select 'normal' or 'no_bias'.
-            If 'normal' is used, the computed bias will be added to the atomic output.
-            If 'no_bias' is used, no bias will be added to the atomic output.
+    property_name:
+            The name of fitting property, which should be consistent with the property name in the dataset.
+            If the data file is named `humo.npy`, this parameter should be "humo".
     resnet_dt
             Time-step `dt` in the resnet construction:
             :math:`y = x + dt * \phi (Wx + b)`
@@ -62,6 +66,9 @@ class PropertyFittingNet(InvarFitting):
             Atomic contributions of the excluded atom types are set zero.
     type_map: list[str], Optional
             A list of strings. Give the name to each type of atoms.
+    default_fparam: list[float], optional
+            The default frame parameter. If set, when `fparam.npy` files are not included in the data system,
+            this value will be used as the default value for the frame parameter in the fitting net.
     """
 
     def __init__(
@@ -70,27 +77,28 @@ class PropertyFittingNet(InvarFitting):
         dim_descrpt: int,
         task_dim: int = 1,
         neuron: list[int] = [128, 128, 128],
-        bias_atom_p: Optional[np.ndarray] = None,
+        bias_atom_p: Optional[Array] = None,
         rcond: Optional[float] = None,
         trainable: Union[bool, list[bool]] = True,
         intensive: bool = False,
-        bias_method: str = "normal",
+        property_name: str = "property",
         resnet_dt: bool = True,
         numb_fparam: int = 0,
         numb_aparam: int = 0,
+        dim_case_embd: int = 0,
         activation_function: str = "tanh",
         precision: str = DEFAULT_PRECISION,
         mixed_types: bool = True,
         exclude_types: list[int] = [],
         type_map: Optional[list[str]] = None,
+        default_fparam: Optional[list] = None,
         # not used
         seed: Optional[int] = None,
     ) -> None:
         self.task_dim = task_dim
         self.intensive = intensive
-        self.bias_method = bias_method
         super().__init__(
-            var_name="property",
+            var_name=property_name,
             ntypes=ntypes,
             dim_descrpt=dim_descrpt,
             dim_out=task_dim,
@@ -99,6 +107,7 @@ class PropertyFittingNet(InvarFitting):
             resnet_dt=resnet_dt,
             numb_fparam=numb_fparam,
             numb_aparam=numb_aparam,
+            dim_case_embd=dim_case_embd,
             rcond=rcond,
             trainable=trainable,
             activation_function=activation_function,
@@ -106,14 +115,29 @@ class PropertyFittingNet(InvarFitting):
             mixed_types=mixed_types,
             exclude_types=exclude_types,
             type_map=type_map,
+            default_fparam=default_fparam,
+        )
+
+    def output_def(self) -> FittingOutputDef:
+        return FittingOutputDef(
+            [
+                OutputVariableDef(
+                    self.var_name,
+                    [self.dim_out],
+                    reducible=True,
+                    r_differentiable=False,
+                    c_differentiable=False,
+                    intensive=self.intensive,
+                ),
+            ]
         )
 
     @classmethod
     def deserialize(cls, data: dict) -> "PropertyFittingNet":
         data = data.copy()
-        check_version_compatibility(data.pop("@version"), 2, 1)
+        check_version_compatibility(data.pop("@version"), 5, 1)
         data.pop("dim_out")
-        data.pop("var_name")
+        data["property_name"] = data.pop("var_name")
         data.pop("tot_ener_zero")
         data.pop("layer_name")
         data.pop("use_aparam_as_mask", None)
@@ -129,6 +153,8 @@ class PropertyFittingNet(InvarFitting):
             **InvarFitting.serialize(self),
             "type": "property",
             "task_dim": self.task_dim,
+            "intensive": self.intensive,
         }
+        dd["@version"] = 5
 
         return dd

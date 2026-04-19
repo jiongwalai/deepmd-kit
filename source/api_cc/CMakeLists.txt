@@ -6,7 +6,6 @@ file(GLOB LIB_SRC src/*.cc src/*.cpp)
 file(GLOB INC_SRC include/*.h ${CMAKE_CURRENT_BINARY_DIR}/version.h)
 
 set(libname "${LIB_DEEPMD_CC}")
-
 add_library(${libname} SHARED ${LIB_SRC})
 
 # link: libdeepmd libdeepmd_op libtensorflow_cc libtensorflow_framework
@@ -16,16 +15,21 @@ if(ENABLE_TENSORFLOW)
                                            TensorFlow::tensorflow_framework)
   target_compile_definitions(${libname} PRIVATE BUILD_TENSORFLOW)
 endif()
-if(ENABLE_PYTORCH
-   AND "${OP_CXX_ABI_PT}" EQUAL "${OP_CXX_ABI}"
-       # LAMMPS and i-PI in the Python package are not ready - needs more work
-   AND NOT BUILD_PY_IF)
+if(ENABLE_PYTORCH AND "${OP_CXX_ABI_PT}" EQUAL "${OP_CXX_ABI}")
   target_link_libraries(${libname} PRIVATE "${TORCH_LIBRARIES}")
   target_compile_definitions(${libname} PRIVATE BUILD_PYTORCH)
 endif()
 if(ENABLE_JAX)
   target_link_libraries(${libname} PRIVATE TensorFlow::tensorflow_c)
   target_compile_definitions(${libname} PRIVATE BUILD_JAX)
+endif()
+if(ENABLE_PADDLE AND NOT BUILD_PY_IF)
+  target_link_libraries(${libname} PUBLIC "${PADDLE_LIBRARIES}")
+  target_compile_definitions(${libname} PUBLIC BUILD_PADDLE)
+  if(DP_VARIANT STREQUAL "rocm")
+    target_link_libraries(${libname}
+                          PUBLIC "${hip_LIB_INSTALL_DIR}/libgalaxyhip.so")
+  endif()
 endif()
 
 target_include_directories(
@@ -43,7 +47,7 @@ set_target_properties(
   ${libname}
   PROPERTIES INSTALL_RPATH "$ORIGIN;${BACKEND_LIBRARY_PATH}"
              INSTALL_RPATH_USE_LINK_PATH TRUE
-             BUILD_RPATH "$ORIGIN/../op/tf;$ORIGIN/../op/pt")
+             BUILD_RPATH "$ORIGIN/../op/tf;$ORIGIN/../op/pt;$ORIGIN/../op/pd")
 target_compile_definitions(${libname} PRIVATE TF_PRIVATE)
 if(CMAKE_TESTING_ENABLED)
   target_link_libraries(${libname} PRIVATE coverage_config)

@@ -1,7 +1,7 @@
-# Descriptor DPA-2 {{ pytorch_icon }} {{ jax_icon }} {{ dpmodel_icon }}
+# Descriptor DPA-2 {{ pytorch_icon }} {{ jax_icon }} {{ paddle_icon }} {{ dpmodel_icon }}
 
 :::{note}
-**Supported backends**: PyTorch {{ pytorch_icon }}, JAX {{ jax_icon }}, DP {{ dpmodel_icon }}
+**Supported backends**: PyTorch {{ pytorch_icon }}, JAX {{ jax_icon }}, Paddle {{ paddle_icon }}, DP {{ dpmodel_icon }}
 :::
 
 The DPA-2 model implementation. See [DPA-2 paper](https://doi.org/10.1038/s41524-024-01493-2) for more details.
@@ -26,7 +26,7 @@ When using the JAX backend, 2 or more MPI ranks are not supported. One must set 
 atom_modify map yes
 ```
 
-See the example `examples/water/lmp/jax_dpa2.lammps`.
+See the example `examples/water/lmp/jax_dpa.lammps`.
 
 ## Data format
 
@@ -38,6 +38,10 @@ Type embedding is within this descriptor with the {ref}`tebd_dim <model[standard
 
 ## Model compression
 
-Model compression is supported when {ref}`repinit/tebd_input_mode <model[standard]/descriptor[dpa2]/repinit/tebd_input_mode>` is `strip`, but only the `repinit` part is compressed.
+Model compression is supported when {ref}`repinit/tebd_input_mode <model[standard]/descriptor[dpa2]/repinit/tebd_input_mode>` is `strip`.
+
+- If {ref}`repinit/attn_layer <model[standard]/descriptor[dpa2]/repinit/attn_layer>` is `0`, both the type embedding and geometric parts inside `repinit` are compressed.
+- If `repinit/attn_layer` is not `0`, only the type embedding tables are compressed and the geometric attention layers remain as neural networks.
+
 An example is given in `examples/water/dpa2/input_torch_compressible.json`.
 The performance improvement will be limited if other parts are more expensive.

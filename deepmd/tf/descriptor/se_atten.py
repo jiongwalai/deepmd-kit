@@ -35,16 +35,16 @@ from deepmd.tf.env import (
     op_module,
     tf,
 )
-from deepmd.tf.nvnmd.descriptor.se_atten import (
+from deepmd.tf.apumd.descriptor.se_atten import (
     build_davg_dstd,
     build_op_descriptor,
+    build_recovered,
     check_switch_range,
-    descrpt2r4,
     filter_GR2D,
     filter_lower_R42GR,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.compress import (
     get_extra_side_embedding_net_variable,
@@ -252,10 +252,10 @@ class DescrptSeAtten(DescrptSeA):
         """
         Constructor
         """
-        if not (nvnmd_cfg.enable and (nvnmd_cfg.version == 1)):
-            assert Version(TF_VERSION) > Version(
-                "2"
-            ), "se_atten only support tensorflow version 2.0 or higher."
+        if not (apumd_cfg.enable and (apumd_cfg.version == 1)):
+            assert Version(TF_VERSION) > Version("2"), (
+                "se_atten only support tensorflow version 2.0 or higher."
+            )
         if ntypes == 0:
             raise ValueError("`model/type_map` is not set or empty!")
         self.stripped_type_embedding = stripped_type_embedding
@@ -449,9 +449,9 @@ class DescrptSeAtten(DescrptSeA):
             The suffix of the type embedding scope, only for DescrptDPA1Compat
         """
         # do some checks before the mocel compression process
-        assert (
-            not self.filter_resnet_dt
-        ), "Model compression error: descriptor resnet_dt must be false!"
+        assert not self.filter_resnet_dt, (
+            "Model compression error: descriptor resnet_dt must be false!"
+        )
         for tt in self.exclude_types:
             if (tt[0] not in range(self.ntypes)) or (tt[1] not in range(self.ntypes)):
                 raise RuntimeError(
@@ -558,9 +558,9 @@ class DescrptSeAtten(DescrptSeA):
         """
         davg = self.davg
         dstd = self.dstd
-        if nvnmd_cfg.enable:
-            nvnmd_cfg.set_ntype(self.ntypes)
-            if nvnmd_cfg.restore_descriptor:
+        if apumd_cfg.enable:
+            apumd_cfg.set_ntype(self.ntypes)
+            if apumd_cfg.restore_descriptor:
                 davg, dstd = build_davg_dstd()
             check_switch_range(davg, dstd)
         with tf.variable_scope("descrpt_attr" + suffix, reuse=reuse):
@@ -605,7 +605,7 @@ class DescrptSeAtten(DescrptSeA):
         self.attn_weight_final = [None for i in range(self.attn_layer)]
 
         op_descriptor = (
-            build_op_descriptor() if nvnmd_cfg.enable else op_module.prod_env_mat_a_mix
+            build_op_descriptor() if apumd_cfg.enable else op_module.prod_env_mat_a_mix
         )
         (
             self.descrpt,
@@ -650,42 +650,43 @@ class DescrptSeAtten(DescrptSeA):
         )  ## lammps will have error without this
         self._identity_tensors(suffix=suffix)
         if self.smooth:
-            self.sliced_avg = tf.reshape(
-                tf.slice(
-                    tf.reshape(self.t_avg, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
-                ),
-                [self.ntypes, 1],
-            )
-            self.sliced_std = tf.reshape(
-                tf.slice(
-                    tf.reshape(self.t_std, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
-                ),
-                [self.ntypes, 1],
-            )
-            self.avg_looked_up = tf.reshape(
-                tf.nn.embedding_lookup(self.sliced_avg, self.atype_nloc),
-                [-1, natoms[0], 1],
-            )
-            self.std_looked_up = tf.reshape(
-                tf.nn.embedding_lookup(self.sliced_std, self.atype_nloc),
-                [-1, natoms[0], 1],
-            )
-            self.recovered_r = (
-                tf.reshape(
+            if not (apumd_cfg.enable and apumd_cfg.quantize_descriptor):
+                self.sliced_avg = tf.reshape(
                     tf.slice(
-                        tf.reshape(self.descrpt_reshape, [-1, 4]), [0, 0], [-1, 1]
+                        tf.reshape(self.t_avg, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
                     ),
-                    [-1, natoms[0], self.sel_all_a[0]],
+                    [self.ntypes, 1],
                 )
-                * self.std_looked_up
-                + self.avg_looked_up
-            )
-            uu = 1 - self.rcut_r_smth * self.recovered_r
-            self.recovered_switch = -uu * uu * uu + 1
-            self.recovered_switch = tf.clip_by_value(self.recovered_switch, 0.0, 1.0)
-            self.recovered_switch = tf.cast(
-                self.recovered_switch, self.filter_precision
-            )
+                self.sliced_std = tf.reshape(
+                    tf.slice(
+                        tf.reshape(self.t_std, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
+                    ),
+                    [self.ntypes, 1],
+                )
+                self.avg_looked_up = tf.reshape(
+                    tf.nn.embedding_lookup(self.sliced_avg, self.atype_nloc),
+                    [-1, natoms[0], 1],
+                )
+                self.std_looked_up = tf.reshape(
+                    tf.nn.embedding_lookup(self.sliced_std, self.atype_nloc),
+                    [-1, natoms[0], 1],
+                )
+                self.recovered_r = (
+                    tf.reshape(
+                        tf.slice(
+                            tf.reshape(self.descrpt_reshape, [-1, 4]), [0, 0], [-1, 1]
+                        ),
+                        [-1, natoms[0], self.sel_all_a[0]],
+                    )
+                    * self.std_looked_up
+                    + self.avg_looked_up
+                )
+                uu = 1 - self.rcut_r_smth * self.recovered_r
+                self.recovered_switch = -uu * uu * uu + 1
+                self.recovered_switch = tf.clip_by_value(self.recovered_switch, 0.0, 1.0)
+                self.recovered_switch = tf.cast(
+                    self.recovered_switch, self.filter_precision
+                )
 
         self.dout, self.qmat = self._pass_filter(
             self.descrpt_reshape,
@@ -715,6 +716,20 @@ class DescrptSeAtten(DescrptSeA):
         inputs_i = inputs
         inputs_i = tf.reshape(inputs_i, [-1, self.ndescrpt])
         type_i = -1
+
+        # descrpt and recovered_switch for apumd
+        if apumd_cfg.enable and apumd_cfg.quantize_descriptor:
+            inputs_i, self.recovered_switch = build_recovered(
+                inputs_i,
+                self.t_avg,
+                self.t_std,
+                self.atype_nloc,
+                natoms[0],
+                self.ntypes,
+                self.rcut_r_smth,
+                self.filter_precision,
+            )
+
         if len(self.exclude_types):
             mask = self.build_type_exclude_mask_mixed(
                 self.exclude_types,
@@ -753,8 +768,7 @@ class DescrptSeAtten(DescrptSeA):
                 )
                 self.negative_mask = -(2 << 32) * (1.0 - self.nmask)
                 inputs_i *= mask
-        if nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor:
-            inputs_i = descrpt2r4(inputs_i, atype)
+
         layer, qmat = self._filter(
             inputs_i,
             type_i,
@@ -1156,19 +1170,20 @@ class DescrptSeAtten(DescrptSeA):
                         log.info(
                             "use the non-compressible model with stripped type embedding"
                         )
-                    if nvnmd_cfg.enable:
-                        if nvnmd_cfg.quantize_descriptor:
+                    if apumd_cfg.enable:
+                        if apumd_cfg.quantize_descriptor:
                             return filter_lower_R42GR(
                                 inputs_i,
                                 atype,
                                 self.nei_type_vec,
+                                self.recovered_switch,
                             )
-                        elif nvnmd_cfg.restore_descriptor:
+                        elif apumd_cfg.restore_descriptor:
                             self.embedding_net_variables = (
-                                nvnmd_cfg.get_dp_init_weights()
+                                apumd_cfg.get_dp_init_weights()
                             )
                             self.two_side_embeeding_net_variables = (
-                                nvnmd_cfg.get_dp_init_weights()
+                                apumd_cfg.get_dp_init_weights()
                             )
                     if not self.compress:
                         xyz_scatter = embedding_net(
@@ -1340,7 +1355,7 @@ class DescrptSeAtten(DescrptSeA):
             reuse=reuse,
             atype=atype,
         )
-        if nvnmd_cfg.enable:
+        if apumd_cfg.enable:
             return filter_GR2D(xyz_scatter_1)
         # natom x nei x outputs_size
         # xyz_scatter = tf.concat(xyz_scatter_total, axis=1)
@@ -1593,6 +1608,7 @@ class DescrptSeAtten(DescrptSeA):
                 bias=bias,
                 use_timestep=False,
                 precision=self.precision.name,
+                trainable=self.trainable,
             )
             matrix_list = [
                 attention_layer_params[layer_idx][key]["matrix"]
@@ -1611,6 +1627,7 @@ class DescrptSeAtten(DescrptSeA):
                 bias=bias,
                 use_timestep=False,
                 precision=self.precision.name,
+                trainable=self.trainable,
             )
             out_proj["matrix"] = attention_layer_params[layer_idx]["c_out"]["matrix"]
             if bias:
@@ -1654,6 +1671,7 @@ class DescrptSeAtten(DescrptSeA):
         variables: dict,
         suffix: str = "",
         type_one_side: bool = False,
+        trainable: bool = True,
     ) -> dict:
         """Serialize network.
 
@@ -1679,6 +1697,8 @@ class DescrptSeAtten(DescrptSeA):
             If 'False', type embeddings of both neighbor and central atoms are considered.
             If 'True', only type embeddings of neighbor atoms are considered.
             Default is 'False'.
+        trainable : bool
+            Whether the network is trainable
 
         Returns
         -------
@@ -1719,6 +1739,7 @@ class DescrptSeAtten(DescrptSeA):
                     activation_function=activation_function,
                     resnet_dt=resnet_dt,
                     precision=self.precision.name,
+                    trainable=trainable,
                 )
             assert embeddings[network_idx] is not None
             if weight_name == "idt":
@@ -1983,6 +2004,7 @@ class DescrptSeAtten(DescrptSeA):
                 resnet_dt=self.filter_resnet_dt,
                 variables=self.embedding_net_variables,
                 excluded_types=self.exclude_types,
+                trainable=self.trainable,
                 suffix=suffix,
             ),
             "attention_layers": self.serialize_attention_layers(
@@ -2032,6 +2054,7 @@ class DescrptSeAtten(DescrptSeA):
                         variables=self.two_side_embeeding_net_variables,
                         suffix=suffix,
                         type_one_side=self.type_one_side,
+                        trainable=self.trainable,
                     )
                 }
             )
@@ -2363,9 +2386,9 @@ class DescrptDPA1Compat(DescrptSeAtten):
         tebd_suffix : str, optional
             Same as suffix.
         """
-        assert (
-            tebd_suffix == ""
-        ), "DescrptDPA1Compat must use the same tebd_suffix as suffix!"
+        assert tebd_suffix == "", (
+            "DescrptDPA1Compat must use the same tebd_suffix as suffix!"
+        )
         super().enable_compression(
             min_nbor_dist,
             graph,

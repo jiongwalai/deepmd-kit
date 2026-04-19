@@ -6,6 +6,7 @@ from abc import (
     abstractmethod,
 )
 from typing import (
+    Any,
     Callable,
 )
 
@@ -68,7 +69,7 @@ class AutoBatchSize(ABC):
                 log.warning(
                     "You can use the environment variable DP_INFER_BATCH_SIZE to"
                     "control the inference batch size (nframes * natoms). "
-                    "The default value is %d." % initial_batch_size
+                    f"The default value is {initial_batch_size}."
                 )
 
         self.factor = factor
@@ -141,12 +142,16 @@ class AutoBatchSize(ABC):
         old_batch_size = self.current_batch_size
         self.current_batch_size = int(self.current_batch_size * factor)
         log.info(
-            "Adjust batch size from %d to %d"
-            % (old_batch_size, self.current_batch_size)
+            f"Adjust batch size from {old_batch_size} to {self.current_batch_size}"
         )
 
     def execute_all(
-        self, callable: Callable, total_size: int, natoms: int, *args, **kwargs
+        self,
+        callable: Callable,
+        total_size: int,
+        natoms: int,
+        *args: Any,
+        **kwargs: Any,
     ) -> tuple[np.ndarray]:
         """Excuate a method with all given data.
 
@@ -175,7 +180,10 @@ class AutoBatchSize(ABC):
                 *[
                     (
                         vv[start_index:end_index, ...]
-                        if array_api_compat.is_array_api_obj(vv) and vv.ndim > 1
+                        if (
+                            (array_api_compat.is_array_api_obj(vv) and vv.ndim > 1)
+                            or str(vv.__class__) == "<class 'paddle.Tensor'>"
+                        )
                         else vv
                     )
                     for vv in args
@@ -183,7 +191,10 @@ class AutoBatchSize(ABC):
                 **{
                     kk: (
                         vv[start_index:end_index, ...]
-                        if array_api_compat.is_array_api_obj(vv) and vv.ndim > 1
+                        if (
+                            (array_api_compat.is_array_api_obj(vv) and vv.ndim > 1)
+                            or str(vv.__class__) == "<class 'paddle.Tensor'>"
+                        )
                         else vv
                     )
                     for kk, vv in kwargs.items()
@@ -204,7 +215,7 @@ class AutoBatchSize(ABC):
                 result = (result,) if not isinstance(result, tuple) else result
             index += n_batch
 
-            def append_to_list(res_list, res):
+            def append_to_list(res_list: list[Any], res: Any) -> list[Any]:
                 if n_batch:
                     res_list.append(res)
                 return res_list
@@ -218,10 +229,18 @@ class AutoBatchSize(ABC):
         assert results is not None
         assert returned_dict is not None
 
-        def concate_result(r):
+        def concate_result(r: list[Any]) -> Any:
             if array_api_compat.is_array_api_obj(r[0]):
                 xp = array_api_compat.array_namespace(r[0])
                 ret = xp.concat(r, axis=0)
+            elif str(r[0].__class__) == "<class 'paddle.Tensor'>":
+                try:
+                    import paddle
+                except ModuleNotFoundError as e:
+                    raise ModuleNotFoundError(
+                        "The 'paddlepaddle' is required but not installed."
+                    ) from e
+                ret = paddle.concat(r, axis=0)
             else:
                 raise RuntimeError(f"Unexpected result type {type(r[0])}")
             return ret

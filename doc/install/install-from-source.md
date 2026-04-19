@@ -93,6 +93,32 @@ One can also [use conda](https://docs.deepmodeling.org/faq/conda.html) to instal
 
 :::
 
+:::{tab-item} Paddle {{ paddle_icon }}
+
+To install Paddle, run
+
+```sh
+# cu126
+# release version
+pip install paddlepaddle-gpu==3.1.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+# nightly-build version
+# pip install --pre paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/nightly/cu126/
+
+# cu118
+# release version
+pip install paddlepaddle-gpu==3.1.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+# nightly-build version
+# pip install --pre paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/nightly/cu118/
+
+# cpu
+# release version
+pip install paddlepaddle==3.1.1 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+# nightly-build version
+# pip install --pre paddlepaddle -i https://www.paddlepaddle.org.cn/packages/nightly/cpu/
+```
+
+:::
+
 ::::
 
 It is important that every time a new shell is started and one wants to use `DeePMD-kit`, the virtual environment should be activated by
@@ -119,7 +145,7 @@ One should remember to activate the virtual environment every time he/she uses D
 
 Check the compiler version on your machine
 
-```
+```bash
 gcc --version
 ```
 
@@ -229,7 +255,7 @@ Other [CMake environment variables](https://cmake.org/cmake/help/latest/manual/c
 
 To test the installation, one should first jump out of the source directory
 
-```
+```bash
 cd /some/other/workspace
 ```
 
@@ -246,6 +272,12 @@ It will print the help information like
 ```
 
 ### Install horovod and mpi4py {{ tensorflow_icon }}
+
+:::{warning}
+Horovod has not released a new version for a long time.
+As of December 2025, the latest Horovod release does not support the latest TensorFlow versions.
+You can check the patches required to support the latest TensorFlow at [conda-forge/horovod-feedstock](https://github.com/conda-forge/horovod-feedstock/blob/main/recipe/meta.yaml).
+:::
 
 [Horovod](https://github.com/horovod/horovod) and [mpi4py](https://github.com/mpi4py/mpi4py) are used for parallel training. For better performance on GPU, please follow the tuning steps in [Horovod on GPU](https://github.com/horovod/horovod/blob/master/docs/gpus.rst).
 
@@ -325,6 +357,20 @@ download the TensorFlow C library from [this page](https://www.tensorflow.org/in
 
 :::
 
+:::{tab-item} Paddle {{ paddle_icon }}
+
+If you want to use C++ interface of Paddle, you need to compile the Paddle inference library(C++ interface) manually from the [linux-compile-by-make](https://www.paddlepaddle.org.cn/documentation/docs/zh/develop/install/compile/linux-compile-by-make.html), then use the `.so` and `.a` files in `Paddle/build/paddle_inference_install_dir/`.
+
+We also provide a weekly-build Paddle C++ inference library for Linux x86_64 with CUDA 11.8/12.3/CPU below:
+
+CUDA 11.8: [Cuda118_cudnn860_Trt8531_D1/latest/paddle_inference.tgz](https://paddle-qa.bj.bcebos.com/paddle-pipeline/GITHUB_Docker_Compile_Test_Cuda118_cudnn860_Trt8531_D1/latest/paddle_inference.tgz)
+
+CUDA 12.3: [Cuda123_cudnn900_Trt8616_D1/latest/paddle_inference.tgz](https://paddle-qa.bj.bcebos.com/paddle-pipeline/GITHUB_Docker_Compile_Test_Cuda123_cudnn900_Trt8616_D1/latest/paddle_inference.tgz)
+
+CPU: [GITHUB_Docker_Compile_Test_Cpu_Mkl_Avx_D1/latest/paddle_inference.tgz](https://paddle-qa.bj.bcebos.com/paddle-pipeline/GITHUB_Docker_Compile_Test_Cpu_Mkl_Avx_D1/latest/paddle_inference.tgz)
+
+:::
+
 ::::
 
 ### Install DeePMD-kit's C++ interface
@@ -337,7 +383,7 @@ mkdir build
 cd build
 ```
 
-The installation requires CMake 3.16 or later for the CPU version, CMake 3.23 or later for the CUDA support, and CMake 3.21 or later for the ROCM support. One can install CMake via `pip` if it is not installed or the installed version does not satisfy the requirement:
+The installation requires CMake 3.25.2 or later for all platforms (CPU, CUDA, and ROCM). One can install CMake via `pip` if it is not installed or the installed version does not satisfy the requirement:
 
 ```sh
 pip install -U cmake
@@ -369,8 +415,7 @@ I assume you have installed the PyTorch (either Python or C++ interface) to `$to
 cmake -DENABLE_PYTORCH=TRUE -DCMAKE_PREFIX_PATH=$torch_root -DCMAKE_INSTALL_PREFIX=$deepmd_root ..
 ```
 
-You can specify `-DUSE_PT_PYTHON_LIBS=TRUE` to use libtorch from the Python installation,
-but you need to be careful that [PyTorch PyPI packages are still built using `_GLIBCXX_USE_CXX11_ABI=0`](https://github.com/pytorch/pytorch/issues/51039), which may be not compatible with other libraries.
+You can specify `-DUSE_PT_PYTHON_LIBS=TRUE` to use libtorch from the Python installation.
 
 ```bash
 cmake -DENABLE_PYTORCH=TRUE -DUSE_PT_PYTHON_LIBS=TRUE -DCMAKE_INSTALL_PREFIX=$deepmd_root ..
@@ -385,6 +430,16 @@ If you want to use the TensorFlow C library and disable the TensorFlow backend, 
 
 ```bash
 cmake -DENABLE_JAX=ON -D CMAKE_PREFIX_PATH=${tensorflow_c_root} ..
+```
+
+:::
+
+:::{tab-item} Paddle {{ paddle_icon }}
+
+I assume you have get the Paddle inference library(C++ interface) to `$PADDLE_INFERENCE_DIR`, then execute CMake
+
+```bash
+cmake -DENABLE_PADDLE=ON -DPADDLE_INFERENCE_DIR=$PADDLE_INFERENCE_DIR -DCMAKE_INSTALL_PREFIX=$deepmd_root ..
 ```
 
 :::
@@ -420,11 +475,27 @@ If {cmake:variable}`ENABLE_TENSORFLOW` is `OFF`, the TensorFlow C library is use
 
 :::
 
+:::{cmake:variable} ENABLE_PADDLE
+
+**Type**: `BOOL` (`ON`/`OFF`), Default: `OFF`
+
+{{ paddle_icon }} Whether building the Paddle backend.
+
+:::
+
 :::{cmake:variable} TENSORFLOW_ROOT
 
 **Type**: `PATH`
 
 {{ tensorflow_icon }} {{ jax_icon }} The Path to TensorFlow's C++ interface.
+
+:::
+
+:::{cmake:variable} PADDLE_INFERENCE_DIR
+
+**Type**: `PATH`
+
+{{ paddle_icon }} The Path to Paddle's C++ inference directory, such as `/path/to/paddle_inference_install_dir` or `/path/to/paddle_inference`.
 
 :::
 

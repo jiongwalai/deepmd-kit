@@ -14,6 +14,7 @@ from collections import (
     defaultdict,
 )
 from typing import (
+    Any,
     Optional,
 )
 
@@ -63,19 +64,31 @@ BACKEND_TABLE: dict[str, str] = {kk: vv.name.lower() for kk, vv in BACKENDS.item
 class BackendOption(argparse.Action):
     """Map backend alias to unique name."""
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: Optional[str] = None,
+    ) -> None:
         setattr(namespace, self.dest, BACKEND_TABLE[values])
 
 
 class DeprecateAction(argparse.Action):
     # See https://stackoverflow.com/a/69052677/9567349 by Ibolit under CC BY-SA 4.0
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.call_count = 0
         if "help" in kwargs:
-            kwargs["help"] = f'[DEPRECATED] {kwargs["help"]}'
+            kwargs["help"] = f"[DEPRECATED] {kwargs['help']}"
         super().__init__(*args, **kwargs)
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: Optional[str] = None,
+    ) -> None:
         if self.call_count == 0:
             warnings.warn(
                 f"The option `{option_string}` is deprecated. It will be ignored.",
@@ -99,9 +112,10 @@ def main_parser() -> argparse.ArgumentParser:
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
         epilog=textwrap.dedent(
             """\
-        Use --tf or --pt to choose the backend:
+        Use --tf, --pt or --pd to choose the backend:
             dp --tf train input.json
             dp --pt train input.json
+            dp --pd train input.json
         """
         ),
     )
@@ -111,7 +125,7 @@ def main_parser() -> argparse.ArgumentParser:
     if default_backend not in BACKEND_TABLE.keys():
         raise ValueError(
             f"Unknown backend {default_backend}. "
-            "Please set DP_BACKEND to either tensorflow or pytorch."
+            "Please set DP_BACKEND to either tensorflow, pytorch, or paddle."
         )
 
     parser_backend = parser.add_mutually_exclusive_group()
@@ -311,7 +325,7 @@ def main_parser() -> argparse.ArgumentParser:
         "--output",
         type=str,
         default="frozen_model",
-        help="Filename (prefix) of the output model file. TensorFlow backend: suffix is .pb; PyTorch backend: suffix is .pth",
+        help="Filename (prefix) of the output model file. TensorFlow backend: suffix is .pb; PyTorch backend: suffix is .pth; Paddle backend: suffix is .json and .pdiparams",
     )
     parser_frz.add_argument(
         "-n",
@@ -322,16 +336,17 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_frz.add_argument(
         "-w",
-        "--nvnmd-weight",
+        "--apumd-weight",
         type=str,
         default=None,
         help="(Supported backend: TensorFlow) the name of weight file (.npy), if set, save the model's weight into the file",
     )
     parser_frz.add_argument(
         "--head",
+        "--model-branch",
         default=None,
         type=str,
-        help="(Supported backend: PyTorch) Task head to freeze if in multi-task mode.",
+        help="(Supported backend: PyTorch) Task head (alias: model branch) to freeze if in multi-task mode.",
     )
 
     # * test script ********************************************************************
@@ -368,6 +383,24 @@ def main_parser() -> argparse.ArgumentParser:
         default=None,
         type=str,
         help="The path to the datafile, each line of which is a path to one data system.",
+    )
+    parser_tst_subgroup.add_argument(
+        "--train-data",
+        dest="train_json",
+        default=None,
+        type=str,
+        help=(
+            "The input json file. Training data in the file will be used for testing."
+        ),
+    )
+    parser_tst_subgroup.add_argument(
+        "--valid-data",
+        dest="valid_json",
+        default=None,
+        type=str,
+        help=(
+            "The input json file. Validation data in the file will be used for testing."
+        ),
     )
     parser_tst.add_argument(
         "-S",
@@ -408,9 +441,60 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_tst.add_argument(
         "--head",
+        "--model-branch",
         default=None,
         type=str,
-        help="(Supported backend: PyTorch) Task head to test if in multi-task mode.",
+        help="(Supported backend: PyTorch) Task head (alias: model branch) to test if in multi-task mode.",
+    )
+
+    # * eval_desc script ***************************************************************
+    parser_eval_desc = subparsers.add_parser(
+        "eval-desc",
+        parents=[parser_log],
+        help="evaluate descriptors using the model",
+        formatter_class=RawTextArgumentDefaultsHelpFormatter,
+        epilog=textwrap.dedent(
+            """\
+        examples:
+            dp eval-desc -m graph.pb -s /path/to/system -o desc
+        """
+        ),
+    )
+    parser_eval_desc.add_argument(
+        "-m",
+        "--model",
+        default="frozen_model",
+        type=str,
+        help="Frozen model file (prefix) to import. TensorFlow backend: suffix is .pb; PyTorch backend: suffix is .pth.",
+    )
+    parser_eval_desc_subgroup = parser_eval_desc.add_mutually_exclusive_group()
+    parser_eval_desc_subgroup.add_argument(
+        "-s",
+        "--system",
+        default=".",
+        type=str,
+        help="The system dir. Recursively detect systems in this directory",
+    )
+    parser_eval_desc_subgroup.add_argument(
+        "-f",
+        "--datafile",
+        default=None,
+        type=str,
+        help="The path to the datafile, each line of which is a path to one data system.",
+    )
+    parser_eval_desc.add_argument(
+        "-o",
+        "--output",
+        default="desc",
+        type=str,
+        help="Output directory for descriptor files. Descriptors will be saved as desc/(system_name).npy",
+    )
+    parser_eval_desc.add_argument(
+        "--head",
+        "--model-branch",
+        default=None,
+        type=str,
+        help="(Supported backend: PyTorch) Task head (alias: model branch) to use if in multi-task mode.",
     )
 
     # * compress model *****************************************************************
@@ -668,12 +752,13 @@ def main_parser() -> argparse.ArgumentParser:
     parser_change_bias = subparsers.add_parser(
         "change-bias",
         parents=[parser_log],
-        help="(Supported backend: PyTorch) Change model out bias according to the input data.",
+        help="Change model out bias according to the input data.",
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
         epilog=textwrap.dedent(
             """\
         examples:
-            dp change-bias model.pt -s data -n 10 -m change
+            dp --pt change-bias model.pt -s data -n 10 -m change
+            dp --tf change-bias model.ckpt -s data -n 10 -m change
         """
         ),
     )
@@ -742,48 +827,44 @@ def main_parser() -> argparse.ArgumentParser:
         "--version", action="version", version=f"DeePMD-kit v{__version__}"
     )
 
-    # * train nvnmd script ******************************************************************
-    parser_train_nvnmd = subparsers.add_parser(
-        "train-nvnmd",
+    # * train apumd script ******************************************************************
+    parser_train_apumd = subparsers.add_parser(
+        "train-apumd",
         parents=[parser_log],
-        help="(Supported backend: TensorFlow) train nvnmd model",
+        help="(Supported backend: TensorFlow) train apumd model",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog=textwrap.dedent(
             """\
         examples:
-            dp train-nvnmd input_cnn.json -s s1
-            dp train-nvnmd input_qnn.json -s s2
-            dp train-nvnmd input_cnn.json -s s1 --restart model.ckpt
-            dp train-nvnmd input_cnn.json -s s2 --init-model model.ckpt
+            dp train-apumd input_cnn.json
         """
         ),
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "INPUT", help="the input parameter file in json format"
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "-i",
         "--init-model",
         type=str,
         default=None,
         help="Initialize the model by the provided path prefix of checkpoint files.",
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "-r",
         "--restart",
         type=str,
         default=None,
         help="Restart the training from the provided prefix of checkpoint files.",
     )
-    parser_train_nvnmd.add_argument(
-        "-s",
-        "--step",
-        default="s1",
+    parser_train_apumd.add_argument(
+        "-f",
+        "--init-frz-model",
         type=str,
-        choices=["s1", "s2"],
-        help="steps to train model of NVNMD: s1 (train CNN), s2 (train QNN)",
+        default=None,
+        help="Initialize the training from the frozen model.",
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "--skip-neighbor-stat",
         action="store_true",
         help="Skip calculating neighbor statistics. Sel checking, automatic sel, and model compression will be disabled.",
@@ -848,7 +929,14 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_show.add_argument(
         "ATTRIBUTES",
-        choices=["model-branch", "type-map", "descriptor", "fitting-net"],
+        choices=[
+            "model-branch",
+            "type-map",
+            "descriptor",
+            "fitting-net",
+            "size",
+            "observed-type",
+        ],
         nargs="+",
     )
     return parser
@@ -899,6 +987,7 @@ def main(args: Optional[list[str]] = None) -> None:
 
     if args.command in (
         "test",
+        "eval-desc",
         "doc-train-input",
         "model-devi",
         "neighbor-stat",
@@ -914,7 +1003,7 @@ def main(args: Optional[list[str]] = None) -> None:
         "transfer",
         "compress",
         "convert-from",
-        "train-nvnmd",
+        "train-apumd",
         "change-bias",
     ):
         deepmd_main = BACKENDS[args.backend]().entry_point_hook

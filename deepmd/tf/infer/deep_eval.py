@@ -139,7 +139,7 @@ class DeepEval(DeepEvalBackend):
 
         # looks ugly...
         if self.modifier_type == "dipole_charge":
-            from deepmd.tf.infer.data_modifier import (
+            from deepmd.tf.modifier import (
                 DipoleChargeModifier,
             )
 
@@ -807,9 +807,9 @@ class DeepEval(DeepEvalBackend):
             assert aparam is not None
             aparam = np.array(aparam)
         if self.has_efield:
-            assert (
-                efield is not None
-            ), "you are using a model with external field, parameter efield should be provided"
+            assert efield is not None, (
+                "you are using a model with external field, parameter efield should be provided"
+            )
             efield = np.array(efield)
 
         # reshape the inputs
@@ -821,8 +821,7 @@ class DeepEval(DeepEvalBackend):
                 fparam = np.tile(fparam.reshape([-1]), [nframes, 1])
             else:
                 raise RuntimeError(
-                    "got wrong size of frame param, should be either %d x %d or %d"
-                    % (nframes, fdim, fdim)
+                    f"got wrong size of frame param, should be either {nframes} x {fdim} or {fdim}"
                 )
         if self.has_aparam:
             fdim = self.get_dim_aparam()
@@ -834,8 +833,7 @@ class DeepEval(DeepEvalBackend):
                 aparam = np.tile(aparam.reshape([-1]), [nframes, natoms])
             else:
                 raise RuntimeError(
-                    "got wrong size of frame param, should be either %d x %d x %d or %d x %d or %d"
-                    % (nframes, natoms, fdim, natoms, fdim, fdim)
+                    f"got wrong size of frame param, should be either {nframes} x {natoms} x {fdim} or {natoms} x {fdim} or {fdim}"
                 )
 
         # sort inputs
@@ -1127,6 +1125,16 @@ class DeepEval(DeepEvalBackend):
         [script] = run_sess(self.sess, [t_script], feed_dict={})
         model_def_script = script.decode("utf-8")
         return json.loads(model_def_script)["model"]
+
+    def get_model(self) -> "tf.Graph":
+        """Get the TensorFlow graph.
+
+        Returns
+        -------
+        tf.Graph
+            The TensorFlow graph.
+        """
+        return self.graph
 
 
 class DeepEvalOld:

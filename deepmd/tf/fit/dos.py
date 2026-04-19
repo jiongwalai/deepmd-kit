@@ -24,11 +24,11 @@ from deepmd.tf.loss.dos import (
 from deepmd.tf.loss.loss import (
     Loss,
 )
-from deepmd.tf.nvnmd.fit.ener import (
-    one_layer_nvnmd,
+from deepmd.tf.apumd.fit.ener import (
+    one_layer_apumd,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.errors import (
     GraphWithoutTensorError,
@@ -74,6 +74,8 @@ class DOSFitting(Fitting):
             Number of frame parameter
     numb_aparam
             Number of atomic parameter
+    dim_case_embd
+            Dimension of case specific embedding.
     ! numb_dos (added)
             Number of gridpoints on which the DOS is evaluated (NEDOS in VASP)
     rcond
@@ -99,6 +101,9 @@ class DOSFitting(Fitting):
     mixed_types : bool
         If true, use a uniform fitting net for all atom types, otherwise use
         different fitting nets for different atom types.
+    default_fparam: list[float], optional
+        The default frame parameter. If set, when `fparam.npy` files are not included in the data system,
+        this value will be used as the default value for the frame parameter in the fitting net.
     type_map: list[str], Optional
             A list of strings. Give the name to each type of atoms.
     """
@@ -111,6 +116,7 @@ class DOSFitting(Fitting):
         resnet_dt: bool = True,
         numb_fparam: int = 0,
         numb_aparam: int = 0,
+        dim_case_embd: int = 0,
         numb_dos: int = 300,
         rcond: Optional[float] = None,
         trainable: Optional[list[bool]] = None,
@@ -122,6 +128,7 @@ class DOSFitting(Fitting):
         use_aparam_as_mask: bool = False,
         mixed_types: bool = False,
         type_map: Optional[list[str]] = None,  # to be compat with input
+        default_fparam: Optional[list[float]] = None,  # to be compat with input
         **kwargs,
     ) -> None:
         """Constructor."""
@@ -132,6 +139,12 @@ class DOSFitting(Fitting):
 
         self.numb_fparam = numb_fparam
         self.numb_aparam = numb_aparam
+        self.dim_case_embd = dim_case_embd
+        self.default_fparam = default_fparam
+        if dim_case_embd > 0:
+            raise ValueError("dim_case_embd is not supported in TensorFlow.")
+        if default_fparam is not None:
+            raise ValueError("default_fparam is not supported in TensorFlow.")
 
         self.numb_dos = numb_dos
 
@@ -149,9 +162,9 @@ class DOSFitting(Fitting):
             self.trainable = [True for ii in range(len(self.n_neuron) + 1)]
         if isinstance(self.trainable, bool):
             self.trainable = [self.trainable] * (len(self.n_neuron) + 1)
-        assert (
-            len(self.trainable) == len(self.n_neuron) + 1
-        ), "length of trainable should be that of n_neuron + 1"
+        assert len(self.trainable) == len(self.n_neuron) + 1, (
+            "length of trainable should be that of n_neuron + 1"
+        )
 
         self.useBN = False
         self.bias_dos = np.zeros((self.ntypes, self.numb_dos), dtype=np.float64)
@@ -167,9 +180,9 @@ class DOSFitting(Fitting):
         self.layer_name = layer_name
         if self.layer_name is not None:
             assert isinstance(self.layer_name, list), "layer_name should be a list"
-            assert (
-                len(self.layer_name) == len(self.n_neuron) + 1
-            ), "length of layer_name should be that of n_neuron + 1"
+            assert len(self.layer_name) == len(self.n_neuron) + 1, (
+                "length of layer_name should be that of n_neuron + 1"
+            )
         self.mixed_types = mixed_types
         self.type_map = type_map
 
@@ -321,8 +334,8 @@ class DOSFitting(Fitting):
             ext_aparam = tf.cast(ext_aparam, self.fitting_precision)
             layer = tf.concat([layer, ext_aparam], axis=1)
 
-        if nvnmd_cfg.enable:
-            one_layer = one_layer_nvnmd
+        if apumd_cfg.enable:
+            one_layer = one_layer_apumd
         else:
             one_layer = one_layer_deepmd
         for ii in range(0, len(self.n_neuron)):
@@ -672,7 +685,7 @@ class DOSFitting(Fitting):
             The deserialized model
         """
         data = data.copy()
-        check_version_compatibility(data.pop("@version", 1), 2, 1)
+        check_version_compatibility(data.pop("@version", 1), 4, 1)
         data["numb_dos"] = data.pop("dim_out")
         fitting = cls(**data)
         fitting.fitting_net_variables = cls.deserialize_network(
@@ -699,7 +712,7 @@ class DOSFitting(Fitting):
         data = {
             "@class": "Fitting",
             "type": "dos",
-            "@version": 2,
+            "@version": 4,
             "var_name": "dos",
             "ntypes": self.ntypes,
             "dim_descrpt": self.dim_descrpt,
@@ -709,6 +722,8 @@ class DOSFitting(Fitting):
             "resnet_dt": self.resnet_dt,
             "numb_fparam": self.numb_fparam,
             "numb_aparam": self.numb_aparam,
+            "dim_case_embd": self.dim_case_embd,
+            "default_fparam": self.default_fparam,
             "rcond": self.rcond,
             "trainable": self.trainable,
             "activation_function": self.activation_function,
@@ -723,6 +738,7 @@ class DOSFitting(Fitting):
                 activation_function=self.activation_function,
                 resnet_dt=self.resnet_dt,
                 variables=self.fitting_net_variables,
+                trainable=self.trainable,
                 suffix=suffix,
             ),
             "@variables": {
@@ -731,8 +747,14 @@ class DOSFitting(Fitting):
                 "fparam_inv_std": self.fparam_inv_std,
                 "aparam_avg": self.aparam_avg,
                 "aparam_inv_std": self.aparam_inv_std,
+                "case_embd": None,
             },
             "type_map": self.type_map,
+            "tot_ener_zero": False,
+            "layer_name": None,
+            "use_aparam_as_mask": False,
+            "spin": None,
+            "atom_ener": None,
         }
         return data
 

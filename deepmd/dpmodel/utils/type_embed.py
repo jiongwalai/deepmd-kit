@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from typing import (
+    Any,
     Optional,
     Union,
 )
@@ -8,6 +9,7 @@ import array_api_compat
 import numpy as np
 
 from deepmd.dpmodel.array_api import (
+    Array,
     support_array_api,
 )
 from deepmd.dpmodel.common import (
@@ -93,10 +95,11 @@ class TypeEmbedNet(NativeOP):
             self.precision,
             seed=self.seed,
             bias=self.use_tebd_bias,
+            trainable=trainable,
         )
 
     @support_array_api(version="2022.12")
-    def call(self) -> np.ndarray:
+    def call(self) -> Array:
         """Compute the type embedding network."""
         sample_array = self.embedding_net[0]["w"]
         xp = array_api_compat.array_namespace(sample_array)
@@ -110,7 +113,7 @@ class TypeEmbedNet(NativeOP):
         return embed
 
     @classmethod
-    def deserialize(cls, data: dict):
+    def deserialize(cls, data: dict) -> "TypeEmbedNet":
         """Deserialize the model.
 
         Parameters
@@ -161,14 +164,14 @@ class TypeEmbedNet(NativeOP):
         }
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat=None
+        self, type_map: list[str], model_with_new_type_stat: Any = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
         """
-        assert (
-            self.type_map is not None
-        ), "'type_map' must be defined when performing type changing!"
+        assert self.type_map is not None, (
+            "'type_map' must be defined when performing type changing!"
+        )
         remap_index, has_new_type = get_index_between_two_maps(self.type_map, type_map)
         if not self.use_econf_tebd:
             do_resnet = self.neuron[0] in [
@@ -177,9 +180,9 @@ class TypeEmbedNet(NativeOP):
                 len(type_map),
                 len(type_map) * 2,
             ]
-            assert (
-                not do_resnet or self.activation_function == "Linear"
-            ), "'activation_function' must be 'Linear' when performing type changing on resnet structure!"
+            assert not do_resnet or self.activation_function == "Linear", (
+                "'activation_function' must be 'Linear' when performing type changing on resnet structure!"
+            )
             first_layer_matrix = self.embedding_net.layers[0].w
             eye_vector = np.eye(self.ntypes, dtype=PRECISION_DICT[self.precision])
             # preprocess for resnet connection
@@ -218,7 +221,9 @@ class TypeEmbedNet(NativeOP):
         self.ntypes = len(type_map)
 
 
-def get_econf_tebd(type_map, precision: str = "default"):
+def get_econf_tebd(
+    type_map: list[str], precision: str = "default"
+) -> tuple[Array, int]:
     from deepmd.utils.econf_embd import (
         ECONF_DIM,
     )
@@ -227,9 +232,9 @@ def get_econf_tebd(type_map, precision: str = "default"):
     )
     from deepmd.utils.econf_embd import type_map as periodic_table
 
-    assert (
-        type_map is not None
-    ), "When using electronic configuration type embedding, type_map must be provided!"
+    assert type_map is not None, (
+        "When using electronic configuration type embedding, type_map must be provided!"
+    )
 
     missing_types = [t for t in type_map if t not in periodic_table]
     assert not missing_types, (
