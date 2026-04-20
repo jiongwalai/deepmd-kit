@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """Alias for backward compatibility."""
 
-from deepmd.utils.argcheck_nvnmd import (
-    nvnmd_args,
+from deepmd.utils.argcheck_apumd import (
+    apumd_args,
 )
 
 __all__ = [
-    "nvnmd_args",
+    "apumd_args",
 ]

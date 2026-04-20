@@ -36,7 +36,7 @@ from deepmd.tf.env import (
     op_module,
     tf,
 )
-from deepmd.tf.nvnmd.descriptor.se_atten import (
+from deepmd.tf.apumd.descriptor.se_atten import (
     build_davg_dstd,
     build_op_descriptor,
     build_recovered,
@@ -44,8 +44,8 @@ from deepmd.tf.nvnmd.descriptor.se_atten import (
     filter_GR2D,
     filter_lower_R42GR,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.compress import (
     get_extra_side_embedding_net_variable,
@@ -253,7 +253,7 @@ class DescrptSeAtten(DescrptSeA):
         """
         Constructor
         """
-        if not (nvnmd_cfg.enable and (nvnmd_cfg.version == 1)):
+        if not (apumd_cfg.enable and (apumd_cfg.version == 1)):
             assert Version(TF_VERSION) > Version("2"), (
                 "se_atten only support tensorflow version 2.0 or higher."
             )
@@ -565,9 +565,9 @@ class DescrptSeAtten(DescrptSeA):
         """
         davg = self.davg
         dstd = self.dstd
-        if nvnmd_cfg.enable:
-            nvnmd_cfg.set_ntype(self.ntypes)
-            if nvnmd_cfg.restore_descriptor:
+        if apumd_cfg.enable:
+            apumd_cfg.set_ntype(self.ntypes)
+            if apumd_cfg.restore_descriptor:
                 davg, dstd = build_davg_dstd()
             check_switch_range(davg, dstd)
         with tf.variable_scope("descrpt_attr" + suffix, reuse=reuse):
@@ -612,7 +612,7 @@ class DescrptSeAtten(DescrptSeA):
         self.attn_weight_final = [None for i in range(self.attn_layer)]
 
         op_descriptor = (
-            build_op_descriptor() if nvnmd_cfg.enable else op_module.prod_env_mat_a_mix
+            build_op_descriptor() if apumd_cfg.enable else op_module.prod_env_mat_a_mix
         )
         (
             self.descrpt,
@@ -657,7 +657,7 @@ class DescrptSeAtten(DescrptSeA):
         )  ## lammps will have error without this
         self._identity_tensors(suffix=suffix)
         if self.smooth:
-            if not (nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor):
+            if not (apumd_cfg.enable and apumd_cfg.quantize_descriptor):
                 self.sliced_avg = tf.reshape(
                     tf.slice(
                         tf.reshape(self.t_avg, [self.ntypes, -1, 4]), [0, 0, 0], [-1, 1, 1]
@@ -731,8 +731,8 @@ class DescrptSeAtten(DescrptSeA):
         inputs_i = tf.reshape(inputs_i, [-1, self.ndescrpt])
         type_i = -1
 
-        # descrpt and recovered_switch for nvnmd
-        if nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor:
+        # descrpt and recovered_switch for apumd
+        if apumd_cfg.enable and apumd_cfg.quantize_descriptor:
             inputs_i, self.recovered_switch = build_recovered(
                 inputs_i,
                 self.t_avg,
@@ -1184,20 +1184,20 @@ class DescrptSeAtten(DescrptSeA):
                         log.info(
                             "use the non-compressible model with stripped type embedding"
                         )
-                    if nvnmd_cfg.enable:
-                        if nvnmd_cfg.quantize_descriptor:
+                    if apumd_cfg.enable:
+                        if apumd_cfg.quantize_descriptor:
                             return filter_lower_R42GR(
                                 inputs_i,
                                 atype,
                                 self.nei_type_vec,
                                 self.recovered_switch,
                             )
-                        elif nvnmd_cfg.restore_descriptor:
+                        elif apumd_cfg.restore_descriptor:
                             self.embedding_net_variables = (
-                                nvnmd_cfg.get_dp_init_weights()
+                                apumd_cfg.get_dp_init_weights()
                             )
                             self.two_side_embeeding_net_variables = (
-                                nvnmd_cfg.get_dp_init_weights()
+                                apumd_cfg.get_dp_init_weights()
                             )
                     if not self.compress:
                         xyz_scatter = embedding_net(
@@ -1369,7 +1369,7 @@ class DescrptSeAtten(DescrptSeA):
             reuse=reuse,
             atype=atype,
         )
-        if nvnmd_cfg.enable:
+        if apumd_cfg.enable:
             return filter_GR2D(xyz_scatter_1)
         # natom x nei x outputs_size
         # xyz_scatter = tf.concat(xyz_scatter_total, axis=1)

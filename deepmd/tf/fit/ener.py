@@ -33,11 +33,11 @@ from deepmd.tf.loss.ener import (
 from deepmd.tf.loss.loss import (
     Loss,
 )
-from deepmd.tf.nvnmd.fit.ener import (
-    one_layer_nvnmd,
+from deepmd.tf.apumd.fit.ener import (
+    one_layer_apumd,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.errors import (
     GraphWithoutTensorError,
@@ -411,8 +411,8 @@ class EnerFitting(Fitting):
             ext_aparam = tf.cast(ext_aparam, self.fitting_precision)
             layer = tf.concat([layer, ext_aparam], axis=1)
 
-        if nvnmd_cfg.enable:
-            one_layer = one_layer_nvnmd
+        if apumd_cfg.enable:
+            one_layer = one_layer_apumd
         else:
             one_layer = one_layer_deepmd
         for ii in range(0, len(self.n_neuron)):
@@ -548,10 +548,10 @@ class EnerFitting(Fitting):
                     self.bias_atom_e[type_i] = self.bias_atom_e[type_i]
             self.bias_atom_e = self.bias_atom_e[:ntypes_atom]
 
-        if nvnmd_cfg.enable:
+        if apumd_cfg.enable:
             # fix the bug: CNN and QNN have different t_bias_atom_e.
-            if "t_bias_atom_e" in nvnmd_cfg.weight.keys():
-                self.bias_atom_e = nvnmd_cfg.weight["t_bias_atom_e"]
+            if "t_bias_atom_e" in apumd_cfg.weight.keys():
+                self.bias_atom_e = apumd_cfg.weight["t_bias_atom_e"]
 
         with tf.variable_scope("fitting_attr" + suffix, reuse=reuse):
             t_dfparam = tf.constant(self.numb_fparam, name="dfparam", dtype=tf.int32)
@@ -650,12 +650,12 @@ class EnerFitting(Fitting):
             atype_filter = tf.cast(self.atype_nloc >= 0, GLOBAL_TF_FLOAT_PRECISION)
             self.atype_nloc = tf.reshape(self.atype_nloc, [-1])
         if (
-            nvnmd_cfg.enable
-            and nvnmd_cfg.quantize_descriptor
-            and nvnmd_cfg.restore_descriptor
-            and (nvnmd_cfg.version == 1)
+            apumd_cfg.enable
+            and apumd_cfg.quantize_descriptor
+            and apumd_cfg.restore_descriptor
+            and (apumd_cfg.version == 1)
         ):
-            type_embedding = nvnmd_cfg.map["t_ebd"]
+            type_embedding = apumd_cfg.map["t_ebd"]
         if type_embedding is not None:
             # keep old behavior
             self.mixed_types = True

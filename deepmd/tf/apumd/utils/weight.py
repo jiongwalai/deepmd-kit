@@ -7,8 +7,8 @@ from typing import (
 from deepmd.tf.env import (
     tf,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 
 log = logging.getLogger(__name__)
@@ -68,14 +68,14 @@ def get_filter_weight(weights: int, spe_j: int, layer_l: int) -> tuple:
         layer order in embedding network
         1~nlayer
     """
-    if nvnmd_cfg.version == 0:
+    if apumd_cfg.version == 0:
         key = f"filter_type_all.matrix_{layer_l}_{spe_j}"  # type_one_side = true
         weight = get_weight(weights, key)
         key = f"filter_type_all.bias_{layer_l}_{spe_j}"  # type_one_side = true
         bias = get_weight(weights, key)
         return weight, bias, None
 
-    if nvnmd_cfg.version == 1:
+    if apumd_cfg.version == 1:
         key = f"filter_type_all.matrix_{layer_l}"
         weight = get_weight(weights, key)
         key = f"filter_type_all.bias_{layer_l}"
@@ -123,7 +123,7 @@ def get_fitnet_weight(
     nlayer : int
         number of layers
     """
-    if nvnmd_cfg.version == 0:
+    if apumd_cfg.version == 0:
         if layer_l == nlayer - 1:
             key = f"final_layer_type_{spe_i}.matrix"
             weight = get_weight(weights, key)
@@ -136,7 +136,7 @@ def get_fitnet_weight(
             bias = get_weight(weights, key)
         return weight, bias, None
 
-    if nvnmd_cfg.version == 1:
+    if apumd_cfg.version == 1:
         if layer_l == nlayer - 1:
             key = "final_layer.matrix"
             weight = get_weight(weights, key)
