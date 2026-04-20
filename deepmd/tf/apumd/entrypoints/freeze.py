@@ -5,7 +5,7 @@
 from deepmd.tf.env import (
     tf,
 )
-from deepmd.tf.nvnmd.utils.fio import (
+from deepmd.tf.apumd.utils.fio import (
     FioDic,
 )
 from deepmd.tf.utils.graph import (
@@ -14,7 +14,7 @@ from deepmd.tf.utils.graph import (
 
 
 def filter_tensorVariableList(tensorVariableList: list[tf.Variable]) -> dict:
-    r"""Get the name of variable for NVNMD.
+    r"""Get the name of variable for APUMD.
 
     | :code:`train_attr/min_nbor_dist`
     | :code:`descrpt_attr/t_avg:0`
@@ -61,7 +61,7 @@ def filter_tensorVariableList(tensorVariableList: list[tf.Variable]) -> dict:
     return dic_name_tv
 
 
-def save_weight(sess: tf.Session, file_name: str = "nvnmd/weight.npy") -> None:
+def save_weight(sess: tf.Session, file_name: str = "apumd/weight.npy") -> None:
     r"""Save the dictionary of weight to a npy file."""
     tvs = tf.global_variables()
     dic_key_tv = filter_tensorVariableList(tvs)

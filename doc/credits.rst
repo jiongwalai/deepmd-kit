@@ -141,7 +141,7 @@ Cite DeePMD-kit and methods
 
    Zeng_EnergyFuels_2021_v35_p762
 
-- If NVNMD is used,
+- If APUMD is used,
 
 .. bibliography::
    :filter: False

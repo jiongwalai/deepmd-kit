@@ -13,7 +13,7 @@ def r2s(r: float, rmin: float, rmax: float) -> float:
     return v
 
 
-def map_nvnmd(
+def map_apumd(
     x: float,
     map_y: np.ndarray,
     map_dy: np.ndarray,

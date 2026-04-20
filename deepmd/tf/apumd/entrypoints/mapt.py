@@ -12,20 +12,20 @@ from deepmd.tf.env import (
     op_module,
     tf,
 )
-from deepmd.tf.nvnmd.data.data import (
+from deepmd.tf.apumd.data.data import (
     jdata_deepmd_input_v0,
     jdata_sys,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
-from deepmd.tf.nvnmd.utils.fio import (
+from deepmd.tf.apumd.utils.fio import (
     FioDic,
 )
-from deepmd.tf.nvnmd.utils.network import (
+from deepmd.tf.apumd.utils.network import (
     get_sess,
 )
-from deepmd.tf.nvnmd.utils.weight import (
+from deepmd.tf.apumd.utils.weight import (
     get_filter_type_weight,
     get_filter_weight,
     get_normalize,
@@ -71,13 +71,13 @@ class MapTable:
     ----------
     config_file
         input file name
-        an .npy file containing the configuration information of NVNMD model
+        an .npy file containing the configuration information of APUMD model
     weight_file
         input file name
-        an .npy file containing the weights of NVNMD model
+        an .npy file containing the weights of APUMD model
     map_file
         output file name
-        an .npy file containing the mapping tables of NVNMD model
+        an .npy file containing the mapping tables of APUMD model
 
     References
     ----------
@@ -89,7 +89,7 @@ class MapTable:
         self.weight_file = weight_file
         self.map_file = map_file
 
-        jdata = jdata_deepmd_input_v0["nvnmd"]
+        jdata = jdata_deepmd_input_v0["apumd"]
         jdata["config_file"] = config_file
         jdata["weight_file"] = weight_file
         jdata["enable"] = True
@@ -101,22 +101,22 @@ class MapTable:
         # 2 : xyz_scatter = xyz_scatter * two_embd * recovered_switch + xyz_scatter;
         # Gs + 0, Gt + 0
         self.Gs_Gt_mode = 2
-        nvnmd_cfg.init_from_jdata(jdata)
+        apumd_cfg.init_from_jdata(jdata)
 
     def build_map(self) -> dict:
         if self.Gs_Gt_mode == 2:
             self.shift_Gs = 0
             self.shift_Gt = 0
         #
-        M = nvnmd_cfg.dscp["M1"]
-        if nvnmd_cfg.version == 0:
-            ndim = nvnmd_cfg.dscp["ntype"]
-        if nvnmd_cfg.version == 1:
+        M = apumd_cfg.dscp["M1"]
+        if apumd_cfg.version == 0:
+            ndim = apumd_cfg.dscp["ntype"]
+        if apumd_cfg.version == 1:
             ndim = 1
         # calculate grid point
         dic_u2s, dic_u2s_ref = self.run_u2s()
         dic_s2g, dic_s2g_ref = self.run_s2g()
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             dic_t2g = self.run_t2g()
             dic_std = self.build_davg_dstd()
         # build mapping table
@@ -167,7 +167,7 @@ class MapTable:
             ndim,
             M,
         )
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             ## t2g
             dic_map3 = {}
             dic_map3["t_ebd"] = dic_t2g["t_ebd"]
@@ -188,12 +188,12 @@ class MapTable:
         self.map["cfg_s2g"] = cfg_s2g
         self.map.update(dic_map1)
         self.map.update(dic_map2)
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             self.map.update(dic_map3)
             self.map.update(dic_map4)
         #
         FioDic().save(self.map_file, self.map)
-        log.info("NVNMD: finish building mapping table")
+        log.info("APUMD: finish building mapping table")
         return self.map
 
     def mapping(self, x: np.ndarray, dic_map: dict, cfgs: dict) -> dict:
@@ -384,13 +384,13 @@ class MapTable:
 
     def build_u2s(self, r2: tf.Tensor) -> tf.Tensor:
         r"""Build tensor s, s=s(r2)."""
-        rmin = nvnmd_cfg.dscp["rcut_smth"]
-        rmax = nvnmd_cfg.dscp["rcut"]
-        dmin = nvnmd_cfg.dscp["dmin"]
+        rmin = apumd_cfg.dscp["rcut_smth"]
+        rmax = apumd_cfg.dscp["rcut"]
+        dmin = apumd_cfg.dscp["dmin"]
 
         min_dist = rmin
-        if "train_attr.min_nbor_dist" in nvnmd_cfg.weight.keys():
-            min_dist = nvnmd_cfg.weight["train_attr.min_nbor_dist"]
+        if "train_attr.min_nbor_dist" in apumd_cfg.weight.keys():
+            min_dist = apumd_cfg.weight["train_attr.min_nbor_dist"]
         if dmin > 1e-6:
             min_dist = dmin
         min_dist = 0.5 if (min_dist > 0.5) else (min_dist - 0.1)
@@ -401,9 +401,9 @@ class MapTable:
         uu = (r_ - rmin) / (rmax - rmin)
         vv = uu * uu * uu * (-6 * uu * uu + 15 * uu - 10) + 1
 
-        if nvnmd_cfg.version == 0:
-            ntype = nvnmd_cfg.dscp["ntype"]
-            avg, std = get_normalize(nvnmd_cfg.weight)
+        if apumd_cfg.version == 0:
+            ntype = apumd_cfg.dscp["ntype"]
+            avg, std = get_normalize(apumd_cfg.weight)
             avg, std = np.float64(avg), np.float64(std)
 
             sl, hl = [], []
@@ -419,7 +419,7 @@ class MapTable:
             # return sl, hl, sl # fix v0 train bug
             return sl, hl, [tf.identity(x) for x in sl]
 
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             s = vv / r__
             h = s / r__
             kk = 1 - rmin * s
@@ -433,9 +433,9 @@ class MapTable:
 
     def build_u2s_grad(self) -> dict:
         r"""Build gradient of s with respect to u (r^2)."""
-        if nvnmd_cfg.version == 0:
-            ndim = nvnmd_cfg.dscp["ntype"]
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 0:
+            ndim = apumd_cfg.dscp["ntype"]
+        if apumd_cfg.version == 1:
             ndim = 1
         #
         dic_ph = {}
@@ -454,14 +454,14 @@ class MapTable:
 
     def run_u2s(self) -> tuple[dict, dict]:
         r"""Build u->s graph and run it to get value of mapping table."""
-        ntype = nvnmd_cfg.dscp["ntype"]
-        if nvnmd_cfg.version == 0:
-            ndim = nvnmd_cfg.dscp["ntype"]
-        if nvnmd_cfg.version == 1:
+        ntype = apumd_cfg.dscp["ntype"]
+        if apumd_cfg.version == 0:
+            ndim = apumd_cfg.dscp["ntype"]
+        if apumd_cfg.version == 1:
             ndim = 1
-        avg, std = get_normalize(nvnmd_cfg.weight)
+        avg, std = get_normalize(apumd_cfg.weight)
         avg, std = np.float64(avg), np.float64(std)
-        rc_max = nvnmd_cfg.dscp["rc_max"]
+        rc_max = apumd_cfg.dscp["rc_max"]
 
         tf.reset_default_graph()
         dic_ph = self.build_u2s_grad()
@@ -508,7 +508,7 @@ class MapTable:
             res_dic2["k_grad"][tt][0] = 0
             res_dic2["k_grad_grad"][tt][0] = 0
             #
-            if nvnmd_cfg.version == 1:
+            if apumd_cfg.version == 1:
                 res_dic["s"][tt][0] = 0
                 res_dic2["s"][tt][0] = 0
 
@@ -520,28 +520,28 @@ class MapTable:
         s is switch function
         G is embedding net output.
         """
-        if nvnmd_cfg.version == 0:
-            ntype = nvnmd_cfg.dscp["ntype"]
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 0:
+            ntype = apumd_cfg.dscp["ntype"]
+        if apumd_cfg.version == 1:
             ntype = 1
         #
         xyz_scatters = []
         for tt2 in range(ntype):
-            wbs = [get_filter_weight(nvnmd_cfg.weight, tt2, ll) for ll in range(1, 5)]
+            wbs = [get_filter_weight(apumd_cfg.weight, tt2, ll) for ll in range(1, 5)]
             xyz_scatter = self.build_embedding_net(s, wbs)
             xyz_scatters.append(xyz_scatter)
         return xyz_scatters
 
     def build_s2g_grad(self) -> dict:
         r"""Build gradient of G with respect to s."""
-        M1 = nvnmd_cfg.dscp["M1"]
+        M1 = apumd_cfg.dscp["M1"]
         #
-        if nvnmd_cfg.version == 0:
-            ntypex = nvnmd_cfg.dscp["ntypex"]
-            ntype = nvnmd_cfg.dscp["ntype"]
+        if apumd_cfg.version == 0:
+            ntypex = apumd_cfg.dscp["ntypex"]
+            ntype = apumd_cfg.dscp["ntype"]
             ndim = ntypex * ntype
             shift = 0
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             ndim = 1
             shift = self.shift_Gs
         #
@@ -555,15 +555,15 @@ class MapTable:
 
     def run_s2g(self) -> tuple[dict, dict]:
         r"""Build s-> graph and run it to get value of mapping table."""
-        smin = nvnmd_cfg.dscp["smin"]
-        smax = nvnmd_cfg.dscp["smax"]
+        smin = apumd_cfg.dscp["smin"]
+        smax = apumd_cfg.dscp["smax"]
         # fix the bug: if model initial mode is 'init_from_model',
         # we need dmin to calculate smin and smax in mapt.py
         if smin == -2:
-            davg, dstd = get_normalize(nvnmd_cfg.weight)
-            nvnmd_cfg.get_s_range(davg, dstd)
-            smin = nvnmd_cfg.dscp["smin"]
-            smax = nvnmd_cfg.dscp["smax"]
+            davg, dstd = get_normalize(apumd_cfg.weight)
+            apumd_cfg.get_s_range(davg, dstd)
+            smin = apumd_cfg.dscp["smin"]
+            smax = apumd_cfg.dscp["smax"]
 
         tf.reset_default_graph()
         dic_ph = self.build_s2g_grad()
@@ -608,7 +608,7 @@ class MapTable:
         t is chemical species of center atom and neighbor atom
         G is embedding net output of type.
         """
-        ntype = nvnmd_cfg.dscp["ntype"]
+        ntype = apumd_cfg.dscp["ntype"]
         filter_precision = tf.float64
         types = tf.convert_to_tensor(list(range(ntype)), dtype=tf.int32)
         ebd_type = tf.cast(
@@ -619,7 +619,7 @@ class MapTable:
         # type -> type_embedding
         dic_ph = {}
         dic_ph["t_one_hot"] = ebd_type
-        wbs = [get_type_embedding_weight(nvnmd_cfg.weight, ll) for ll in range(1, 5)]
+        wbs = [get_type_embedding_weight(apumd_cfg.weight, ll) for ll in range(1, 5)]
         ebd_type = self.build_embedding_net(dic_ph["t_one_hot"], wbs, None)
         last_type = tf.cast(
             tf.zeros([1, ebd_type.shape[1]], dtype=filter_precision), filter_precision
@@ -645,7 +645,7 @@ class MapTable:
             [-1, two_side_type_embedding.shape[-1]],
         )
         # see se_atten.py in dp
-        wbs = [get_filter_type_weight(nvnmd_cfg.weight, ll) for ll in range(1, 5)]
+        wbs = [get_filter_type_weight(apumd_cfg.weight, ll) for ll in range(1, 5)]
         dic_ph["gt"] = (
             self.build_embedding_net(two_side_type_embedding, wbs) + self.shift_Gt
         )
@@ -697,8 +697,8 @@ class MapTable:
         return xx
 
     def build_davg_dstd(self) -> dict:
-        ntype = nvnmd_cfg.dscp["ntype"]
-        davg, dstd = get_normalize(nvnmd_cfg.weight)
+        ntype = apumd_cfg.dscp["ntype"]
+        davg, dstd = get_normalize(apumd_cfg.weight)
         #
         res_dic = {}
         res_dic["davg_opp"] = np.array([-davg[tt, 0:4] for tt in range(ntype)])
@@ -708,11 +708,11 @@ class MapTable:
 
 def mapt(
     *,
-    nvnmd_config: str | None = "nvnmd/config.npy",
-    nvnmd_weight: str | None = "nvnmd/weight.npy",
-    nvnmd_map: str | None = "nvnmd/map.npy",
+    apumd_config: str | None = "apumd/config.npy",
+    apumd_weight: str | None = "apumd/weight.npy",
+    apumd_map: str | None = "apumd/map.npy",
     **kwargs: Any,
 ) -> None:
     # build mapping table
-    mapObj = MapTable(nvnmd_config, nvnmd_weight, nvnmd_map)
+    mapObj = MapTable(apumd_config, apumd_weight, apumd_map)
     mapObj.build_map()

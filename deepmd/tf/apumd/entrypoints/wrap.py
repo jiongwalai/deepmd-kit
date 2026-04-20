@@ -12,25 +12,25 @@ from deepmd.tf.env import (
     op_module,
     tf,
 )
-from deepmd.tf.nvnmd.data.data import (
+from deepmd.tf.apumd.data.data import (
     jdata_deepmd_input_v0,
     jdata_deepmd_input_v1_ni256,
     jdata_sys,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
-from deepmd.tf.nvnmd.utils.encode import (
+from deepmd.tf.apumd.utils.encode import (
     Encode,
 )
-from deepmd.tf.nvnmd.utils.fio import (
+from deepmd.tf.apumd.utils.fio import (
     FioBin,
     FioTxt,
 )
-from deepmd.tf.nvnmd.utils.network import (
+from deepmd.tf.apumd.utils.network import (
     get_sess,
 )
-from deepmd.tf.nvnmd.utils.weight import (
+from deepmd.tf.apumd.utils.weight import (
     get_fitnet_weight,
     get_type_weight,
 )
@@ -44,28 +44,28 @@ log = logging.getLogger(__name__)
 class Wrap:
     r"""Generate the binary model file (model.pb).
 
-    the model file can be use to run the NVNMD with lammps
+    the model file can be use to run the APUMD with lammps
     the pair style need set as:
 
     .. code-block:: lammps
 
-        pair_style nvnmd model.pb
+        pair_style apu model.pb
         pair_coeff * *
 
     Parameters
     ----------
     config_file
         input file name
-        an .npy file containing the configuration information of NVNMD model
+        an .npy file containing the configuration information of APUMD model
     weight_file
         input file name
-        an .npy file containing the weights of NVNMD model
+        an .npy file containing the weights of APUMD model
     map_file
         input file name
-        an .npy file containing the mapping tables of NVNMD model
+        an .npy file containing the mapping tables of APUMD model
     model_file
         output file name
-        an .pb file containing the model using in the NVNMD
+        an .pb file containing the model using in the APUMD
 
     References
     ----------
@@ -83,14 +83,14 @@ class Wrap:
         loc_config = np.load(config_file,allow_pickle=True)
         loc_version = loc_config[0]['ctrl']['VERSION']
         loc_nstdm = loc_config[0]['ctrl']['NSTDM']
-        jdata = jdata_deepmd_input_v1_ni256["nvnmd"] if loc_version == 1 else jdata_deepmd_input_v0["nvnmd"]
+        jdata = jdata_deepmd_input_v1_ni256["apumd"] if loc_version == 1 else jdata_deepmd_input_v0["apumd"]
         jdata['device'] = 'vu13p' if loc_nstdm == 32 else 64
         jdata["config_file"] = config_file
         jdata["weight_file"] = weight_file
         jdata["map_file"] = map_file
         jdata["enable"] = True
 
-        nvnmd_cfg.init_from_jdata(jdata)
+        apumd_cfg.init_from_jdata(jdata)
 
     def wrap(self) -> None:
         e = Encode()
@@ -114,7 +114,7 @@ class Wrap:
         hgra = e.bin2hex(bgra)
 
         # bstd, bgtt, bavc
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             bstd, bgtt, bavc = self.wrap_lut()
             hstd = e.bin2hex(bstd)
             hgtt = e.bin2hex(bgtt)
@@ -122,10 +122,10 @@ class Wrap:
 
         # extend data according to the number of bits per row of BRAM
         nbit = 32
-        if nvnmd_cfg.version == 0:
+        if apumd_cfg.version == 0:
             datas = [hcfg, hfps, hbps, hswt, hdsw, hfea, hgra]
             keys = "cfg fps bps swt dsw fea gra".split()
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             keys = "cfg fps bps swt dsw std fea gra gtt avc".split()
             datas = [hcfg, hfps, hbps, hswt, hdsw, hstd, hfea, hgra, hgtt, havc]
         nhs = []
@@ -144,12 +144,12 @@ class Wrap:
             # DEVELOP_DEBUG
             if jdata_sys["debug"]:
                 log.info(f"{k}: {h} x {w * 4} bit")
-                FioTxt().save(f"nvnmd/wrap/h{k}.txt", d)
+                FioTxt().save(f"apumd/wrap/h{k}.txt", d)
             datas[ii] = d
-        # update h & w of nvnmd_cfg
-        nvnmd_cfg.size["NH_DATA"] = nhs
-        nvnmd_cfg.size["NW_DATA"] = nws
-        nvnmd_cfg.save(nvnmd_cfg.config_file)
+        # update h & w of apumd_cfg
+        apumd_cfg.size["NH_DATA"] = nhs
+        apumd_cfg.size["NW_DATA"] = nws
+        apumd_cfg.save(apumd_cfg.config_file)
         head = self.wrap_head(nhs, nws)
         # output model
         hs = [*head]
@@ -157,7 +157,7 @@ class Wrap:
             hs.extend(d)
 
         FioBin().save(self.model_file, hs)
-        log.info("NVNMD: finish wrapping model file")
+        log.info("APUMD: finish wrapping model file")
 
     def wrap_head(self, nhs: Any, nws: Any) -> Any:
         r"""Wrap the head information.
@@ -172,11 +172,11 @@ class Wrap:
         atom_ener  atom bias energy
         ener_fact  factor for atom_ener
         """
-        nbit = nvnmd_cfg.nbit
-        ctrl = nvnmd_cfg.ctrl
-        dscp = nvnmd_cfg.dscp
-        fitn = nvnmd_cfg.fitn
-        weight = nvnmd_cfg.weight
+        nbit = apumd_cfg.nbit
+        ctrl = apumd_cfg.ctrl
+        dscp = apumd_cfg.dscp
+        fitn = apumd_cfg.fitn
+        weight = apumd_cfg.weight
         VERSION = ctrl["VERSION"]
         SUB_VERSION = ctrl["SUB_VERSION"]
         MAX_NNEI = ctrl["MAX_NNEI"]
@@ -256,14 +256,14 @@ class Wrap:
             [NBIT_FLTE-1:0] NEXPO_DIV_NI
             [NBIT_NSTEP-1:0] NSTEP
         """
-        dscp = nvnmd_cfg.dscp
-        nbit = nvnmd_cfg.nbit
-        mapt = nvnmd_cfg.map
+        dscp = apumd_cfg.dscp
+        nbit = apumd_cfg.nbit
+        mapt = apumd_cfg.map
 
         bs = ""
         e = Encode()
 
-        if nvnmd_cfg.version == 0:
+        if apumd_cfg.version == 0:
             NBIT_IDX_S2G = nbit["NBIT_IDX_S2G"]
             NBIT_NEIB = nbit["NBIT_NEIB"]
             NBIT_FLTE = nbit["NBIT_FLTE"]
@@ -332,7 +332,7 @@ class Wrap:
             NIX = dscp["NIX"]
             ln2_NIX = -int(np.log2(NIX))
             bs = e.dec2bin(ln2_NIX, NBIT_FLTE, signed=True)[0] + bs
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             NBIT_IDX_S2G = nbit["NBIT_IDX_S2G"]
             NBIT_FLTE = nbit["NBIT_FLTE"]
             NBIT_NSTEP = nbit["NBIT_NSTEP"]
@@ -355,16 +355,16 @@ class Wrap:
         w weight
         b bias
         """
-        dscp = nvnmd_cfg.dscp
-        fitn = nvnmd_cfg.fitn
-        weight = nvnmd_cfg.weight
-        nbit = nvnmd_cfg.nbit
-        ctrl = nvnmd_cfg.ctrl
+        dscp = apumd_cfg.dscp
+        fitn = apumd_cfg.fitn
+        weight = apumd_cfg.weight
+        nbit = apumd_cfg.nbit
+        ctrl = apumd_cfg.ctrl
 
-        if nvnmd_cfg.version == 0:
+        if apumd_cfg.version == 0:
             ntype = dscp["ntype"]
             ntype_max = dscp["ntype_max"]
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             ntype = 1
             ntype_max = 1
 
@@ -506,18 +506,18 @@ class Wrap:
 
     def wrap_map(self) -> tuple[list[str], list[str], list[str], list[str]]:
         r"""Wrap the mapping table of embedding network."""
-        dscp = nvnmd_cfg.dscp
-        maps = nvnmd_cfg.map
-        nbit = nvnmd_cfg.nbit
+        dscp = apumd_cfg.dscp
+        maps = apumd_cfg.map
+        nbit = apumd_cfg.nbit
 
         M1 = dscp["M1"]
         NBIT_FLTE = nbit["NBIT_FLTE"]
         NBIT_FLTF = nbit["NBIT_FLTF"]
 
-        if nvnmd_cfg.version == 0:
+        if apumd_cfg.version == 0:
             ntype = dscp["ntype"]
             ntype_max = dscp["ntype_max"]
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             ntype = 1
             ntype_max = 1
 
@@ -531,7 +531,7 @@ class Wrap:
         for tt in range(ntype_max):
             ttt = tt if tt < ntype else 0
             kkk = 1 if tt < ntype else 0
-            if nvnmd_cfg.version == 0:
+            if apumd_cfg.version == 0:
                 swt = np.concatenate([maps["s"][ttt], maps["h"][ttt]], axis=1)
                 dsw = np.concatenate([maps["s_grad"][ttt], maps["h_grad"][ttt]], axis=1)
             else:
@@ -559,7 +559,7 @@ class Wrap:
         # k = 2**23
         # print(dsws[0][42] * k)
         # reshape
-        if nvnmd_cfg.version == 0:
+        if apumd_cfg.version == 0:
             nmerges = [2 * 2, 2 * 2, 4 * 2, 4 * 2]
             bss = []
             for ii in range(len(mapts)):
@@ -573,7 +573,7 @@ class Wrap:
                 bs = e.reverse_bin(bs, nmerges[ii])
                 bs = e.merge_bin(bs, nmerges[ii])
                 bss.append(bs)
-        if nvnmd_cfg.version == 1:
+        if apumd_cfg.version == 1:
             ndim = [3, 3, M1, M1]
             bss = []
             for ii in range(len(mapts)):
@@ -596,20 +596,20 @@ class Wrap:
 
     def wrap_lut(self) -> tuple[list[str], list[str], list[str]]:
         r"""Wrap the LUT."""
-        dscp = nvnmd_cfg.dscp
-        fitn = nvnmd_cfg.fitn
-        maps = nvnmd_cfg.map
-        nbit = nvnmd_cfg.nbit
-        weight = nvnmd_cfg.weight
+        dscp = apumd_cfg.dscp
+        fitn = apumd_cfg.fitn
+        maps = apumd_cfg.map
+        nbit = apumd_cfg.nbit
+        weight = apumd_cfg.weight
 
         M1 = dscp["M1"]
         ntype = dscp["ntype"]
         ntype_max = dscp["ntype_max"]
         NBIT_FLTE = nbit["NBIT_FLTE"]
         NBIT_FLTF = nbit["NBIT_FLTF"]
-        NBIT_DATA = nvnmd_cfg.nbit["NBIT_FIT_DATA"]
-        NBIT_WXDB = nvnmd_cfg.nbit["NBIT_FIT_WXDB"]
-        NBIT_DATA_FL = nvnmd_cfg.nbit["NBIT_FIT_DATA_FL"]
+        NBIT_DATA = apumd_cfg.nbit["NBIT_FIT_DATA"]
+        NBIT_WXDB = apumd_cfg.nbit["NBIT_FIT_WXDB"]
+        NBIT_DATA_FL = apumd_cfg.nbit["NBIT_FIT_DATA_FL"]
 
         e = Encode()
         # avg & std
@@ -649,11 +649,11 @@ class Wrap:
 
 def wrap(
     *,
-    nvnmd_config: str | None = "nvnmd/config.npy",
-    nvnmd_weight: str | None = "nvnmd/weight.npy",
-    nvnmd_map: str | None = "nvnmd/map.npy",
-    nvnmd_model: str | None = "nvnmd/model.pb",
+    apumd_config: str | None = "apumd/config.npy",
+    apumd_weight: str | None = "apumd/weight.npy",
+    apumd_map: str | None = "apumd/map.npy",
+    apumd_model: str | None = "apumd/model.pb",
     **kwargs: Any,
 ) -> None:
-    wrapObj = Wrap(nvnmd_config, nvnmd_weight, nvnmd_map, nvnmd_model)
+    wrapObj = Wrap(apumd_config, apumd_weight, apumd_map, apumd_model)
     wrapObj.wrap()

@@ -288,7 +288,7 @@ jdata_deepmd_input_v0 = {
         },
         "fitting_net": {"seed": 1, "neuron": [128, 128, 128], "resnet_dt": False},
     },
-    "nvnmd": {
+    "apumd": {
         "version": 0,
         "device": "vu9p",
         "max_nnei": 128,  # 128 or 256
@@ -333,7 +333,7 @@ jdata_deepmd_input_v0 = {
 
 jdata_deepmd_input_v0_ni128 = copy.deepcopy(jdata_deepmd_input_v0)
 jdata_deepmd_input_v0_ni256 = copy.deepcopy(jdata_deepmd_input_v0)
-jdata_deepmd_input_v0_ni256["nvnmd"]["max_nnei"] = 256
+jdata_deepmd_input_v0_ni256["apumd"]["max_nnei"] = 256
 
 jdata_deepmd_input_v1 = {
     "model": {
@@ -357,7 +357,7 @@ jdata_deepmd_input_v1 = {
         },
         "fitting_net": {"seed": 1, "neuron": [128, 128, 128], "resnet_dt": False},
     },
-    "nvnmd": {
+    "apumd": {
         "version": 1,
         "device": "vu9p",
         "max_nnei": 128,  # 128 or 256
@@ -402,18 +402,18 @@ jdata_deepmd_input_v1 = {
 
 jdata_deepmd_input_v1_ni128 = copy.deepcopy(jdata_deepmd_input_v1)
 jdata_deepmd_input_v1_ni256 = copy.deepcopy(jdata_deepmd_input_v1)
-jdata_deepmd_input_v1_ni256["nvnmd"]["max_nnei"] = 256
+jdata_deepmd_input_v1_ni256["apumd"]["max_nnei"] = 256
 
 
-NVNMD_WELCOME = (
-    r" _   _  __     __  _   _   __  __   ____  ",
-    r"| \ | | \ \   / / | \ | | |  \/  | |  _ \ ",
-    r"|  \| |  \ \ / /  |  \| | | |\/| | | | | |",
-    r"| |\  |   \ V /   | |\  | | |  | | | |_| |",
-    r"|_| \_|    \_/    |_| \_| |_|  |_| |____/ ",
+APUMD_WELCOME = (
+    r"     _    ____  _   _   __  __   ____  ",
+    r"    / \  |  _ \| | | | |  \/  | |  _ \ ",
+    r"   / _ \ | |_) | | | | | |\/| | | | | |",
+    r"  / ___ \|  __/| |_| | | |  | | | |_| |",
+    r" /_/   \_\_|    \___/  |_|  |_| |____/ ",
 )
 
-NVNMD_CITATION = (
+APUMD_CITATION = (
     "Please read and cite:",
     "Mo et al., npj Comput Mater 8, 107 (2022)",
 )

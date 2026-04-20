@@ -25,7 +25,7 @@ from deepmd.tf.env import (
     op_module,
     tf,
 )
-from deepmd.tf.nvnmd.descriptor.se_a import (
+from deepmd.tf.apumd.descriptor.se_a import (
     build_davg_dstd,
     build_op_descriptor,
     check_switch_range,
@@ -33,8 +33,8 @@ from deepmd.tf.nvnmd.descriptor.se_a import (
     filter_GR2D,
     filter_lower_R42GR,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.compress import (
     get_extra_side_embedding_net_variable,
@@ -606,8 +606,8 @@ class DescrptSeA(DescrptSe):
         """
         davg = self.davg
         dstd = self.dstd
-        if nvnmd_cfg.enable:
-            if nvnmd_cfg.restore_descriptor:
+        if apumd_cfg.enable:
+            if apumd_cfg.restore_descriptor:
                 davg, dstd = build_davg_dstd()
             check_switch_range(davg, dstd)
         with tf.variable_scope("descrpt_attr" + suffix, reuse=reuse):
@@ -650,7 +650,7 @@ class DescrptSeA(DescrptSe):
         self.atype = atype
 
         op_descriptor = (
-            build_op_descriptor() if nvnmd_cfg.enable else op_module.prod_env_mat_a
+            build_op_descriptor() if apumd_cfg.enable else op_module.prod_env_mat_a
         )
         self.descrpt, self.descrpt_deriv, self.rij, self.nlist = op_descriptor(
             coord,
@@ -826,7 +826,7 @@ class DescrptSeA(DescrptSe):
             inputs_i = inputs
             inputs_i = tf.reshape(inputs_i, [-1, self.ndescrpt])
             type_i = -1
-            if nvnmd_cfg.enable and nvnmd_cfg.quantize_descriptor:
+            if apumd_cfg.enable and apumd_cfg.quantize_descriptor:
                 inputs_i = descrpt2r4(inputs_i, natoms)
             self.atype_nloc = tf.reshape(
                 tf.slice(atype, [0, 0], [-1, natoms[0]]), [-1]
@@ -1083,7 +1083,7 @@ class DescrptSeA(DescrptSe):
                         "compression of type embedded descriptor is not supported when tebd_input_mode is not set to 'strip'"
                     )
         # natom x 4 x outputs_size
-        if nvnmd_cfg.enable:
+        if apumd_cfg.enable:
             oo = filter_lower_R42GR(
                 type_i,
                 type_input,
@@ -1275,7 +1275,7 @@ class DescrptSeA(DescrptSe):
                     bavg=bavg,
                     trainable=trainable,
                 )
-            if nvnmd_cfg.enable:
+            if apumd_cfg.enable:
                 return filter_GR2D(xyz_scatter_1)
             # natom x nei x outputs_size
             # xyz_scatter = tf.concat(xyz_scatter_total, axis=1)

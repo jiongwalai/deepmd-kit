@@ -4,9 +4,9 @@ import logging
 
 import numpy as np
 
-from deepmd.tf.nvnmd.data.data import (
-    NVNMD_CITATION,
-    NVNMD_WELCOME,
+from deepmd.tf.apumd.data.data import (
+    APUMD_CITATION,
+    APUMD_WELCOME,
     jdata_config_v0,
     jdata_config_v0_ni128,
     jdata_config_v0_ni256,
@@ -18,19 +18,19 @@ from deepmd.tf.nvnmd.data.data import (
     jdata_deepmd_input_v1_ni128,
     jdata_deepmd_input_v1_ni256,
 )
-from deepmd.tf.nvnmd.utils.fio import (
+from deepmd.tf.apumd.utils.fio import (
     FioDic,
 )
-from deepmd.tf.nvnmd.utils.op import (
+from deepmd.tf.apumd.utils.op import (
     r2s,
 )
 
 log = logging.getLogger(__name__)
 
 
-class NvnmdConfig:
-    r"""Configuration for NVNMD
-    record the message of model such as size, using nvnmd or not.
+class ApumdConfig:
+    r"""Configuration for APUMD
+    record the message of model such as size, using apumd or not.
 
     Parameters
     ----------
@@ -48,7 +48,7 @@ class NvnmdConfig:
         self.enable = False
         self.map = {}
         self.config = copy.deepcopy(jdata_config_v0)
-        self.save_path = "nvnmd/config.npy"
+        self.save_path = "apumd/config.npy"
         self.weight = {}
         self.init_from_jdata(jdata)
 
@@ -132,7 +132,7 @@ class NvnmdConfig:
         r"""Initialize version-dependent parameters."""
         self.version = version
         self.max_nnei = max_nnei
-        log.debug(f"#Set nvnmd version as {self.version} ")
+        log.debug(f"#Set apumd version as {self.version} ")
         if self.version == 0:
             if self.max_nnei == 128:
                 self.jdata_deepmd_input = copy.deepcopy(jdata_deepmd_input_v0_ni128)
@@ -332,12 +332,12 @@ class NvnmdConfig:
         r"""Set the number of type."""
         self.dscp["ntype"] = ntype
         self.config["dscp"]["ntype"] = ntype
-        nvnmd_cfg.save()
+        apumd_cfg.save()
 
     def get_s_range(self, davg: np.ndarray, dstd: np.ndarray) -> None:
         r"""Get the range of switch function."""
-        rmin = nvnmd_cfg.dscp["rcut_smth"]
-        rmax = nvnmd_cfg.dscp["rcut"]
+        rmin = apumd_cfg.dscp["rcut_smth"]
+        rmax = apumd_cfg.dscp["rcut"]
         ntype = self.dscp["ntype"]
         dmin = self.dscp["dmin"]
         #
@@ -348,7 +348,7 @@ class NvnmdConfig:
         smax = np.max(smax_)
         self.dscp["smin"] = smin
         self.dscp["smax"] = smax
-        nvnmd_cfg.save()
+        apumd_cfg.save()
         # check
         log.info(f"the range of s is [{smin}, {smax}]")
         if smax - smin > 32.0:
@@ -404,9 +404,9 @@ class NvnmdConfig:
             jdata["type_map"] = self.dpin["type_map"]
         return jdata
 
-    def get_nvnmd_jdata(self) -> dict:
-        r"""Generate `nvnmd` in input script."""
-        jdata = self.jdata_deepmd_input["nvnmd"]
+    def get_apumd_jdata(self) -> dict:
+        r"""Generate `apumd` in input script."""
+        jdata = self.jdata_deepmd_input["apumd"]
         jdata["net_size"] = self.net_size
         jdata["device"] = self.device
         jdata["max_nnei"] = self.max_nnei
@@ -436,7 +436,7 @@ class NvnmdConfig:
         r"""Generate input script with member element one by one."""
         jdata = copy.deepcopy(self.jdata_deepmd_input)
         jdata["model"] = self.get_model_jdata()
-        jdata["nvnmd"] = self.get_nvnmd_jdata()
+        jdata["apumd"] = self.get_apumd_jdata()
         jdata["learning_rate"] = self.get_learning_rate_jdata()
         jdata["loss"] = self.get_loss_jdata()
         jdata["training"] = self.get_training_jdata()
@@ -451,8 +451,8 @@ class NvnmdConfig:
         return dic
 
     def disp_message(self):
-        r"""Display the log of NVNMD."""
-        NVNMD_CONFIG = (
+        r"""Display the log of APUMD."""
+        APUMD_CONFIG = (
             f"enable: {self.enable}",
             f"net_size: {self.net_size}",
             f"map_file: {self.map_file}",
@@ -463,9 +463,9 @@ class NvnmdConfig:
             f"quantize_descriptor: {self.quantize_descriptor}",
             f"quantize_fitting_net: {self.quantize_fitting_net}",
         )
-        for message in NVNMD_WELCOME + NVNMD_CITATION + NVNMD_CONFIG:
+        for message in APUMD_WELCOME + APUMD_CITATION + APUMD_CONFIG:
             log.info(message)
 
 
-# global configuration for nvnmd
-nvnmd_cfg = NvnmdConfig(jdata_deepmd_input_v0["nvnmd"])
+# global configuration for apumd
+apumd_cfg = ApumdConfig(jdata_deepmd_input_v0["apumd"])

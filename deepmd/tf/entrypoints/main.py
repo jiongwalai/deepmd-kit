@@ -28,8 +28,8 @@ from deepmd.tf.entrypoints import (
 from deepmd.tf.loggers import (
     set_log_handles,
 )
-from deepmd.tf.nvnmd.entrypoints.train import (
-    train_nvnmd,
+from deepmd.tf.apumd.entrypoints.train import (
+    train_apumd,
 )
 
 __all__ = ["get_ll", "main", "main_parser", "parse_args"]
@@ -85,8 +85,8 @@ def main(args: list[str] | argparse.Namespace | None = None) -> None:
         convert(**dict_args)
     elif args.command == "change-bias":
         change_bias(**dict_args)
-    elif args.command == "train-nvnmd":  # nvnmd
-        train_nvnmd(**dict_args)
+    elif args.command == "train-apumd":  # apumd
+        train_apumd(**dict_args)
     elif args.command is None:
         pass
     else:
