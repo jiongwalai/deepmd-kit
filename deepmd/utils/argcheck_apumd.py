@@ -4,9 +4,9 @@ from dargs import (
 )
 
 
-def nvnmd_args(fold_subdoc: bool = False) -> Argument:
+def apumd_args(fold_subdoc: bool = False) -> Argument:
     doc_version = (
-        "configuration the nvnmd version (0 | 1), 0 for 4 types, 1 for 32 types"
+        "configuration the apumd version (0 | 1), 0 for 4 types, 1 for 32 types"
     )
     doc_max_nnei = "configuration the max number of neighbors, 128|256 for version 0, 128 for version 1"
     doc_device = "hardware used by model, vu9p or vu13p"
@@ -16,7 +16,7 @@ def nvnmd_args(fold_subdoc: bool = False) -> Argument:
     doc_map_file = "A file containing the mapping tables to replace the calculation of embedding nets"
     doc_config_file = "A file containing the parameters about how to implement the model in certain hardware"
     doc_weight_file = "a *.npy file containing the weights of the model"
-    doc_enable = "enable the nvnmd training"
+    doc_enable = "enable the apumd training"
     doc_restore_descriptor = (
         "enable to restore the parameter of embedding_net from weight.npy"
     )
@@ -68,7 +68,7 @@ def nvnmd_args(fold_subdoc: bool = False) -> Argument:
         ),
     ]
 
-    doc_nvnmd = "The nvnmd options."
+    doc_apumd = "The apumd options."
     return Argument(
-        "nvnmd", dict, args, [], optional=True, doc=doc_nvnmd, fold_subdoc=fold_subdoc
+        "apumd", dict, args, [], optional=True, doc=doc_apumd, fold_subdoc=fold_subdoc
     )

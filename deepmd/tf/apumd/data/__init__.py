@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""nvnmd.data
+"""apumd.data
 ==========.
 
 Provides
@@ -36,9 +36,9 @@ jdata_config_128 (default)
 jdata_configs
     all configure of jdata_config{nfit_node}
 jdata_deepmd_input
-    default input script for nvnmd training
-NVNMD_WELCOME
-    nvnmd title when logging
-NVNMD_CITATION
-    citation of nvnmd
+    default input script for apumd training
+APUMD_WELCOME
+    apumd title when logging
+APUMD_CITATION
+    citation of apumd
 """

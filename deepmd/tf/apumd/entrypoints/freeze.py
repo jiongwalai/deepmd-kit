@@ -4,7 +4,7 @@
 from deepmd.tf.env import (
     tf,
 )
-from deepmd.tf.nvnmd.utils.fio import (
+from deepmd.tf.apumd.utils.fio import (
     FioDic,
 )
 from deepmd.tf.utils.graph import (

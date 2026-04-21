@@ -3,7 +3,7 @@ import logging
 
 import numpy as np
 
-from deepmd.tf.nvnmd.data.data import (
+from deepmd.tf.apumd.data.data import (
     jdata_sys,
 )
 
@@ -113,11 +113,11 @@ class Encode:
         if jdata_sys["debug"]:
             if np.sum(I1) > 0:
                 log.warning(
-                    f"NVNMD: there are data {name} smaller than the lower limit {pmin}"
+                    f"APUMD: there are data {name} smaller than the lower limit {pmin}"
                 )
             if np.sum(I2) > 0:
                 log.warning(
-                    f"NVNMD: there are data {name} bigger than the upper limit {pmax}"
+                    f"APUMD: there are data {name} bigger than the upper limit {pmax}"
                 )
 
     def extend_list(self, slbin, nfull):

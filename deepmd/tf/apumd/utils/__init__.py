@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
 from .argcheck import (
-    nvnmd_args,
+    apumd_args,
 )
 from .config import (
-    nvnmd_cfg,
+    apumd_cfg,
 )
 from .encode import (
     Encode,
@@ -17,7 +17,7 @@ from .network import (
     one_layer,
 )
 from .op import (
-    map_nvnmd,
+    map_apumd,
 )
 from .weight import (
     get_filter_weight,
@@ -31,8 +31,8 @@ __all__ = [
     "FioTxt",
     "get_filter_weight",
     "get_fitnet_weight",
-    "map_nvnmd",
-    "nvnmd_args",
-    "nvnmd_cfg",
+    "map_apumd",
+    "apumd_args",
+    "apumd_cfg",
     "one_layer",
 ]

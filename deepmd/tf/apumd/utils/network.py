@@ -8,10 +8,10 @@ from deepmd.tf.env import (
     op_module,
     tf,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
-from deepmd.tf.nvnmd.utils.weight import (
+from deepmd.tf.apumd.utils.weight import (
     get_constant_initializer,
 )
 from deepmd.tf.utils.network import (
@@ -99,10 +99,10 @@ def one_layer_wb(
     uniform_seed,
     name,
 ):
-    if nvnmd_cfg.restore_fitting_net:
+    if apumd_cfg.restore_fitting_net:
         # initializer
-        w_initializer = get_constant_initializer(nvnmd_cfg.weight, "matrix")
-        b_initializer = get_constant_initializer(nvnmd_cfg.weight, "bias")
+        w_initializer = get_constant_initializer(apumd_cfg.weight, "matrix")
+        b_initializer = get_constant_initializer(apumd_cfg.weight, "bias")
     else:
         w_initializer = tf.random_normal_initializer(
             stddev=stddev / np.sqrt(shape[1] + outputs_size),
@@ -145,9 +145,9 @@ def one_layer_t(
     uniform_seed,
     name,
 ):
-    NTAVC = nvnmd_cfg.fitn["NTAVC"]
-    if nvnmd_cfg.restore_fitting_net:
-        t_initializer = get_constant_initializer(nvnmd_cfg.weight, "tweight")
+    NTAVC = apumd_cfg.fitn["NTAVC"]
+    if apumd_cfg.restore_fitting_net:
+        t_initializer = get_constant_initializer(apumd_cfg.weight, "tweight")
     else:
         t_initializer = tf.random_normal_initializer(
             stddev=stddev / np.sqrt(NTAVC + outputs_size),
@@ -190,7 +190,7 @@ def one_layer(
     Its weight and bias can be initialed with random or constant value.
     """
     # USE FOR NEW FITTINGNET
-    is_layer = (nvnmd_cfg.version == 1) and ("layer_0" in name)
+    is_layer = (apumd_cfg.version == 1) and ("layer_0" in name)
     with tf.variable_scope(name, reuse=reuse):
         if is_layer:
             t = one_layer_t(
@@ -206,7 +206,7 @@ def one_layer(
                 name,
             )
             #
-            NTAVC = nvnmd_cfg.fitn["NTAVC"]
+            NTAVC = apumd_cfg.fitn["NTAVC"]
             nd = inputs.get_shape().as_list()[1] - NTAVC
             inputs2 = tf.slice(inputs, [0, nd], [-1, NTAVC])
             inputs = tf.slice(inputs, [0, 0], [-1, nd])
@@ -224,9 +224,9 @@ def one_layer(
             uniform_seed,
             name,
         )
-        if nvnmd_cfg.quantize_fitting_net:
-            NBIT_DATA_FL = nvnmd_cfg.nbit["NBIT_FIT_DATA_FL"]
-            NBIT_SHORT_FL = nvnmd_cfg.nbit["NBIT_FIT_SHORT_FL"]
+        if apumd_cfg.quantize_fitting_net:
+            NBIT_DATA_FL = apumd_cfg.nbit["NBIT_FIT_DATA_FL"]
+            NBIT_SHORT_FL = apumd_cfg.nbit["NBIT_FIT_SHORT_FL"]
             # w
             with tf.variable_scope("w", reuse=reuse):
                 w = op_module.quantize_nvnmd(w, 1, NBIT_DATA_FL, NBIT_DATA_FL, -1)
