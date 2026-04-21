@@ -2,8 +2,7 @@
 import logging
 import re
 from typing import (
-    Optional,
-    Union,
+    Any,
 )
 
 import numpy as np
@@ -22,8 +21,8 @@ from deepmd.tf.env import (
     TYPE_EMBEDDING_PATTERN,
     tf,
 )
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 from deepmd.tf.utils.graph import (
     get_type_embedding_net_variables_from_graph_def,
@@ -42,7 +41,7 @@ def embed_atom_type(
     ntypes: int,
     natoms: tf.Tensor,
     type_embedding: tf.Tensor,
-):
+) -> tf.Tensor:
     """Make the embedded type for the atoms in system.
     The atoms are assumed to be sorted according to the type,
     thus their types are described by a `tf.Tensor` natoms, see explanation below.
@@ -116,16 +115,16 @@ class TypeEmbedNet:
         ntypes: int,
         neuron: list[int],
         resnet_dt: bool = False,
-        activation_function: Union[str, None] = "tanh",
+        activation_function: str | None = "tanh",
         precision: str = "default",
         trainable: bool = True,
-        seed: Optional[int] = None,
+        seed: int | None = None,
         uniform_seed: bool = False,
         padding: bool = False,
         use_econf_tebd: bool = False,
         use_tebd_bias: bool = False,
-        type_map: Optional[list[str]] = None,
-        **kwargs,
+        type_map: list[str] | None = None,
+        **kwargs: Any,
     ) -> None:
         """Constructor."""
         self.ntypes = ntypes
@@ -154,9 +153,9 @@ class TypeEmbedNet:
     def build(
         self,
         ntypes: int,
-        reuse=None,
-        suffix="",
-    ):
+        reuse: bool | None = None,
+        suffix: str = "",
+    ) -> tf.Tensor:
         """Build the computational graph for the descriptor.
 
         Parameters
@@ -187,14 +186,14 @@ class TypeEmbedNet:
             )
         ebd_type = tf.reshape(ebd_type, [ntypes, -1])
         name = "type_embed_net" + suffix
-        if nvnmd_cfg.enable:
+        if apumd_cfg.enable:
             self.use_tebd_bias = True
         if (
-            nvnmd_cfg.enable
-            and (nvnmd_cfg.version == 1)
-            and (nvnmd_cfg.restore_descriptor or nvnmd_cfg.restore_fitting_net)
+            apumd_cfg.enable
+            and (apumd_cfg.version == 1)
+            and (apumd_cfg.restore_descriptor or apumd_cfg.restore_fitting_net)
         ):
-            self.type_embedding_net_variables = nvnmd_cfg.get_dp_init_weights()
+            self.type_embedding_net_variables = apumd_cfg.get_dp_init_weights()
         with tf.variable_scope(name, reuse=reuse):
             ebd_type = embedding_net(
                 ebd_type,
@@ -219,8 +218,8 @@ class TypeEmbedNet:
         self,
         graph: tf.Graph,
         graph_def: tf.GraphDef,
-        suffix="",
-        model_type="original_model",
+        suffix: str = "",
+        model_type: str = "original_model",
     ) -> None:
         """Init the type embedding net variables with the given dict.
 
@@ -241,7 +240,7 @@ class TypeEmbedNet:
         )
 
     @classmethod
-    def deserialize(cls, data: dict, suffix: str = ""):
+    def deserialize(cls, data: dict, suffix: str = "") -> "TypeEmbedNet":
         """Deserialize the model.
 
         Parameters

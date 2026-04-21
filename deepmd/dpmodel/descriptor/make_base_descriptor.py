@@ -3,12 +3,12 @@ from abc import (
     ABC,
     abstractmethod,
 )
+from collections.abc import (
+    Callable,
+)
 from typing import (
     Any,
-    Callable,
     NoReturn,
-    Optional,
-    Union,
 )
 
 from deepmd.common import (
@@ -51,7 +51,7 @@ def make_base_descriptor(
         def __new__(cls, *args: Any, **kwargs: Any) -> Any:
             if cls is BD:
                 cls = cls.get_class_by_type(j_get_type(kwargs, cls.__name__))
-            return super().__new__(cls)
+            return object.__new__(cls)
 
         @abstractmethod
         def get_rcut(self) -> float:
@@ -129,7 +129,7 @@ def make_base_descriptor(
 
         @abstractmethod
         def change_type_map(
-            self, type_map: list[str], model_with_new_type_stat: Optional[Any] = None
+            self, type_map: list[str], model_with_new_type_stat: Any | None = None
         ) -> None:
             """Change the type related params to new ones, according to `type_map` and the original one in the model.
             If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
@@ -148,8 +148,8 @@ def make_base_descriptor(
 
         def compute_input_stats(
             self,
-            merged: Union[Callable[[], list[dict]], list[dict]],
-            path: Optional[DPPath] = None,
+            merged: Callable[[], list[dict]] | list[dict],
+            path: DPPath | None = None,
         ) -> NoReturn:
             """Update mean and stddev for descriptor elements."""
             raise NotImplementedError
@@ -162,7 +162,7 @@ def make_base_descriptor(
             table_stride_2: float = 0.1,
             check_frequency: int = -1,
         ) -> None:
-            """Receive the statisitcs (distance, max_nbor_size and env_mat_range) of the training data.
+            """Receive the statistics (distance, max_nbor_size and env_mat_range) of the training data.
 
             Parameters
             ----------
@@ -185,7 +185,8 @@ def make_base_descriptor(
             extended_coord: Array,
             extended_atype: Array,
             nlist: Array,
-            mapping: Optional[Array] = None,
+            mapping: Array | None = None,
+            fparam: Array | None = None,
         ) -> Array:
             """Calculate descriptor."""
             pass
@@ -218,9 +219,9 @@ def make_base_descriptor(
         def update_sel(
             cls,
             train_data: DeepmdDataSystem,
-            type_map: Optional[list[str]],
+            type_map: list[str] | None,
             local_jdata: dict,
-        ) -> tuple[dict, Optional[float]]:
+        ) -> tuple[dict, float | None]:
             """Update the selection and perform neighbor statistics.
 
             Parameters

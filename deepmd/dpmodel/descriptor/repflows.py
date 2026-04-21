@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-from typing import (
+from collections.abc import (
     Callable,
-    Optional,
-    Union,
 )
 
 import array_api_compat
@@ -64,6 +62,31 @@ from .repformers import (
 class DescrptBlockRepflows(NativeOP, DescriptorBlock):
     r"""
     The repflow descriptor block.
+
+    The repflow descriptor maintains three types of representations and updates them
+    iteratively through message passing:
+
+    - **Node representation** :math:`\mathbf{n}^i \in \mathbb{R}^{n_{dim}}`: single-atom features
+    - **Edge representation** :math:`\mathbf{e}^{ij} \in \mathbb{R}^{e_{dim}}`: pair-atom features
+    - **Angle representation** :math:`\mathbf{a}^{ijk} \in \mathbb{R}^{a_{dim}}`: three-body features
+
+    The update equations for layer :math:`l` are:
+
+    .. math::
+        \mathbf{n}^{i,l+1} = \mathbf{n}^{i,l} + \text{MLP}_n\left(\sum_{j \in \mathcal{N}(i)} \mathbf{e}^{ij,l}\right),
+
+    .. math::
+        \mathbf{e}^{ij,l+1} = \mathbf{e}^{ij,l} + \text{MLP}_e\left([\mathbf{n}^{i,l}, \mathbf{n}^{j,l}, \mathbf{e}^{ij,l}, \sum_k \mathbf{a}^{ijk,l}]\right),
+
+    .. math::
+        \mathbf{a}^{ijk,l+1} = \mathbf{a}^{ijk,l} + \text{MLP}_a\left([\mathbf{e}^{ij,l}, \mathbf{e}^{ik,l}, \cos\theta_{jik}]\right).
+
+    The final descriptor is computed via symmetrization:
+
+    .. math::
+        \mathcal{D}^i = \frac{1}{N_c^2} (\mathcal{N}^i)^T \mathcal{E}^i (\mathcal{E}^i)^T \mathcal{N}^i_<,
+
+    where :math:`\mathcal{N}^i_<` denotes the first `axis_neuron` columns of :math:`\mathcal{N}^i`.
 
     Parameters
     ----------
@@ -207,7 +230,7 @@ class DescrptBlockRepflows(NativeOP, DescriptorBlock):
         use_dynamic_sel: bool = False,
         sel_reduce_factor: float = 10.0,
         use_loc_mapping: bool = True,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         super().__init__()
@@ -421,8 +444,8 @@ class DescrptBlockRepflows(NativeOP, DescriptorBlock):
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
-        path: Optional[DPPath] = None,
+        merged: Callable[[], list[dict]] | list[dict],
+        path: DPPath | None = None,
     ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
@@ -440,6 +463,8 @@ class DescrptBlockRepflows(NativeOP, DescriptorBlock):
             The path to the stat file.
 
         """
+        if self.set_stddev_constant and self.set_davg_zero:
+            return
         env_mat_stat = EnvMatStatSe(self)
         if path is not None:
             path = path / env_mat_stat.get_hash()
@@ -455,9 +480,15 @@ class DescrptBlockRepflows(NativeOP, DescriptorBlock):
         self.stats = env_mat_stat.stats
         mean, stddev = env_mat_stat()
         xp = array_api_compat.array_namespace(self.stddev)
+        device = array_api_compat.device(self.stddev)
         if not self.set_davg_zero:
-            self.mean = xp.asarray(mean, dtype=self.mean.dtype, copy=True)
-        self.stddev = xp.asarray(stddev, dtype=self.stddev.dtype, copy=True)
+            self.mean = xp.asarray(
+                mean, dtype=self.mean.dtype, copy=True, device=device
+            )
+        if not self.set_stddev_constant:
+            self.stddev = xp.asarray(
+                stddev, dtype=self.stddev.dtype, copy=True, device=device
+            )
 
     def get_stats(self) -> dict[str, StatItem]:
         """Get the statistics of the descriptor."""
@@ -479,9 +510,10 @@ class DescrptBlockRepflows(NativeOP, DescriptorBlock):
         nlist: Array,
         coord_ext: Array,
         atype_ext: Array,
-        atype_embd_ext: Optional[Array] = None,
-        mapping: Optional[Array] = None,
-    ) -> tuple[Array, Array]:
+        atype_embd_ext: Array | None = None,
+        mapping: Array | None = None,
+        type_embedding: Array | None = None,
+    ) -> tuple[Array, Array, Array, Array, Array]:
         xp = array_api_compat.array_namespace(nlist, coord_ext, atype_ext)
         nframes, nloc, nnei = nlist.shape
         nall = xp.reshape(coord_ext, (nframes, -1)).shape[1] // 3
@@ -592,8 +624,12 @@ class DescrptBlockRepflows(NativeOP, DescriptorBlock):
             # n_angle x 1
             a_sw = (a_sw[:, :, :, None] * a_sw[:, :, None, :])[a_nlist_mask]
         else:
-            edge_index = xp.zeros([2, 1], dtype=nlist.dtype)
-            angle_index = xp.zeros([3, 1], dtype=nlist.dtype)
+            edge_index = xp.zeros(
+                [2, 1], dtype=nlist.dtype, device=array_api_compat.device(nlist)
+            )
+            angle_index = xp.zeros(
+                [3, 1], dtype=nlist.dtype, device=array_api_compat.device(nlist)
+            )
 
         # get edge and angle embedding
         # nb x nloc x nnei x e_dim [OR] n_edge x e_dim
@@ -851,7 +887,7 @@ class RepFlowLayer(NativeOP):
         self,
         e_rcut: float,
         e_rcut_smth: float,
-        e_sel: int,
+        e_sel: int | list[int],
         a_rcut: float,
         a_rcut_smth: float,
         a_sel: int,
@@ -874,7 +910,7 @@ class RepFlowLayer(NativeOP):
         update_residual: float = 0.1,
         update_residual_init: str = "const",
         precision: str = "float64",
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         super().__init__()
@@ -1319,7 +1355,7 @@ class RepFlowLayer(NativeOP):
         a_sw: Array,  # switch func, nf x nloc x a_nnei
         edge_index: Array,  # 2 x n_edge
         angle_index: Array,  # 3 x n_angle
-    ) -> tuple[Array, Array]:
+    ) -> tuple[Array, Array, Array]:
         """
         Parameters
         ----------
@@ -1708,6 +1744,7 @@ class RepFlowLayer(NativeOP):
                         xp.zeros(
                             (nb, nloc, self.nnei - self.a_sel, self.e_dim),
                             dtype=edge_ebd.dtype,
+                            device=array_api_compat.device(edge_ebd),
                         ),
                     ],
                     axis=2,
@@ -1738,6 +1775,7 @@ class RepFlowLayer(NativeOP):
                         xp.zeros(
                             (nb, nloc, self.nnei - self.a_sel),
                             dtype=a_nlist_mask.dtype,
+                            device=array_api_compat.device(a_nlist_mask),
                         ),
                     ],
                     axis=-1,

@@ -141,13 +141,19 @@ Cite DeePMD-kit and methods
 
    Zeng_EnergyFuels_2021_v35_p762
 
-- If NVNMD is used,
+- If APUMD is used,
 
 .. bibliography::
    :filter: False
 
    Mo_npjComputMater_2022_v8_p107
 
+- If fitting properties (e.g. band gap) or multi-task fine-tuning is used,
+
+.. bibliography::
+   :filter: False
+
+   Zhang_2026_multitaskfinetuning
 
 Package Contributors
 =========================

@@ -15,11 +15,13 @@ from collections import (
 )
 from typing import (
     Any,
-    Optional,
 )
 
 from deepmd.backend.backend import (
     Backend,
+)
+from deepmd.pretrained.registry import (
+    available_model_names,
 )
 
 try:
@@ -69,7 +71,7 @@ class BackendOption(argparse.Action):
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: Any,
-        option_string: Optional[str] = None,
+        option_string: str | None = None,
     ) -> None:
         setattr(namespace, self.dest, BACKEND_TABLE[values])
 
@@ -87,7 +89,7 @@ class DeprecateAction(argparse.Action):
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: Any,
-        option_string: Optional[str] = None,
+        option_string: str | None = None,
     ) -> None:
         if self.call_count == 0:
             warnings.warn(
@@ -336,7 +338,7 @@ def main_parser() -> argparse.ArgumentParser:
     )
     parser_frz.add_argument(
         "-w",
-        "--nvnmd-weight",
+        "--apumd-weight",
         type=str,
         default=None,
         help="(Supported backend: TensorFlow) the name of weight file (.npy), if set, save the model's weight into the file",
@@ -827,55 +829,55 @@ def main_parser() -> argparse.ArgumentParser:
         "--version", action="version", version=f"DeePMD-kit v{__version__}"
     )
 
-    # * train nvnmd script ******************************************************************
-    parser_train_nvnmd = subparsers.add_parser(
-        "train-nvnmd",
+    # * train apumd script ******************************************************************
+    parser_train_apumd = subparsers.add_parser(
+        "train-apumd",
         parents=[parser_log],
-        help="(Supported backend: TensorFlow) train nvnmd model",
+        help="(Supported backend: TensorFlow) train apumd model",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog=textwrap.dedent(
             """\
         examples:
-            dp train-nvnmd input_cnn.json -s s1
-            dp train-nvnmd input_qnn.json -s s2
-            dp train-nvnmd input_cnn.json -s s1 --restart model.ckpt
-            dp train-nvnmd input_cnn.json -s s2 --init-model model.ckpt
+            dp train-apumd input_cnn.json -s s1
+            dp train-apumd input_qnn.json -s s2
+            dp train-apumd input_cnn.json -s s1 --restart model.ckpt
+            dp train-apumd input_cnn.json -s s2 --init-model model.ckpt
         """
         ),
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "INPUT", help="the input parameter file in json format"
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "-i",
         "--init-model",
         type=str,
         default=None,
         help="Initialize the model by the provided path prefix of checkpoint files.",
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "-r",
         "--restart",
         type=str,
         default=None,
         help="Restart the training from the provided prefix of checkpoint files.",
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "-f",
         "--init-frz-model",
         type=str,
         default=None,
         help="Initialize the training from the frozen model.",
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "-s",
         "--step",
         default="s1",
         type=str,
         choices=["s1", "s2"],
-        help="steps to train model of NVNMD: s1 (train CNN), s2 (train QNN)",
+        help="steps to train model of APUMD: s1 (train CNN), s2 (train QNN)",
     )
-    parser_train_nvnmd.add_argument(
+    parser_train_apumd.add_argument(
         "--skip-neighbor-stat",
         action="store_true",
         help="Skip calculating neighbor statistics. Sel checking, automatic sel, and model compression will be disabled.",
@@ -950,10 +952,39 @@ def main_parser() -> argparse.ArgumentParser:
         ],
         nargs="+",
     )
+
+    # pretrained
+    parser_pretrained = subparsers.add_parser(
+        "pretrained",
+        parents=[parser_log],
+        help="Manage builtin pretrained models",
+        formatter_class=RawTextArgumentDefaultsHelpFormatter,
+    )
+    pretrained_subparsers = parser_pretrained.add_subparsers(
+        dest="pretrained_command",
+        required=True,
+    )
+    parser_pretrained_download = pretrained_subparsers.add_parser(
+        "download",
+        help="Download one pretrained model",
+    )
+
+    parser_pretrained_download.add_argument(
+        "MODEL",
+        choices=available_model_names(),
+        help="Pretrained model name",
+    )
+    parser_pretrained_download.add_argument(
+        "--cache-dir",
+        default=None,
+        type=str,
+        help="Optional cache directory for pretrained model files",
+    )
+
     return parser
 
 
-def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse arguments and convert argument strings to objects.
 
     Parameters
@@ -977,7 +1008,7 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     return parsed_args
 
 
-def main(args: Optional[list[str]] = None) -> None:
+def main(args: list[str] | None = None) -> None:
     """DeePMD-kit new entry point.
 
     Parameters
@@ -1005,6 +1036,7 @@ def main(args: Optional[list[str]] = None) -> None:
         "gui",
         "convert-backend",
         "show",
+        "pretrained",
     ):
         # common entrypoints
         from deepmd.entrypoints.main import main as deepmd_main
@@ -1014,7 +1046,7 @@ def main(args: Optional[list[str]] = None) -> None:
         "transfer",
         "compress",
         "convert-from",
-        "train-nvnmd",
+        "train-apumd",
         "change-bias",
     ):
         deepmd_main = BACKENDS[args.backend]().entry_point_hook

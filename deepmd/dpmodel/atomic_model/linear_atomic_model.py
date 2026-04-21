@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+from collections.abc import (
+    Callable,
+)
 from typing import (
     Any,
-    Optional,
-    Union,
 )
 
 import array_api_compat
@@ -18,6 +19,9 @@ from deepmd.dpmodel.utils.nlist import (
 )
 from deepmd.env import (
     GLOBAL_NP_FLOAT_PRECISION,
+)
+from deepmd.utils.path import (
+    DPPath,
 )
 from deepmd.utils.version import (
     check_version_compatibility,
@@ -40,7 +44,18 @@ from .pairtab_atomic_model import (
 
 @BaseAtomicModel.register("linear")
 class LinearEnergyAtomicModel(BaseAtomicModel):
-    """Linear model make linear combinations of several existing models.
+    r"""Linear model makes linear combinations of several existing models.
+
+    The linear model combines predictions from multiple atomic models:
+
+    .. math::
+        E^i = \sum_{k=1}^{K} w_k \cdot E_k^i,
+
+    where :math:`E_k^i` is the energy predicted by the :math:`k`-th sub-model
+    for atom :math:`i`, and :math:`w_k` is the corresponding weight.
+
+    This is useful for combining different interaction types, e.g., DP + ZBL
+    for short-range repulsion, or DP + D3 for dispersion corrections.
 
     Parameters
     ----------
@@ -115,7 +130,7 @@ class LinearEnergyAtomicModel(BaseAtomicModel):
         return self.type_map
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat: Optional[Any] = None
+        self, type_map: list[str], model_with_new_type_stat: Any | None = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
@@ -150,14 +165,14 @@ class LinearEnergyAtomicModel(BaseAtomicModel):
         """Get the processed sels for each individual models. Not distinguishing types."""
         return [model.get_nsel() for model in self.models]
 
-    def get_model_sels(self) -> list[Union[int, list[int]]]:
+    def get_model_sels(self) -> list[int | list[int]]:
         """Get the sels for each individual models."""
         return [model.get_sel() for model in self.models]
 
-    def _sort_rcuts_sels(self) -> tuple[tuple[Array, Array], list[int]]:
+    def _sort_rcuts_sels(self) -> tuple[list[float], list[int]]:
         # sort the pair of rcut and sels in ascending order, first based on sel, then on rcut.
         zipped = sorted(
-            zip(self.get_model_rcuts(), self.get_model_nsels()),
+            zip(self.get_model_rcuts(), self.get_model_nsels(), strict=True),
             key=lambda x: (x[1], x[0]),
         )
         return [p[0] for p in zipped], [p[1] for p in zipped]
@@ -199,9 +214,9 @@ class LinearEnergyAtomicModel(BaseAtomicModel):
         extended_coord: Array,
         extended_atype: Array,
         nlist: Array,
-        mapping: Optional[Array] = None,
-        fparam: Optional[Array] = None,
-        aparam: Optional[Array] = None,
+        mapping: Array | None = None,
+        fparam: Array | None = None,
+        aparam: Array | None = None,
     ) -> dict[str, Array]:
         """Return atomic prediction.
 
@@ -237,12 +252,14 @@ class LinearEnergyAtomicModel(BaseAtomicModel):
         )
         raw_nlists = [
             nlists[get_multiple_nlist_key(rcut, sel)]
-            for rcut, sel in zip(self.get_model_rcuts(), self.get_model_nsels())
+            for rcut, sel in zip(
+                self.get_model_rcuts(), self.get_model_nsels(), strict=True
+            )
         ]
         nlists_ = [
             nl if mt else nlist_distinguish_types(nl, extended_atype, sel)
             for mt, nl, sel in zip(
-                self.mixed_types_list, raw_nlists, self.get_model_sels()
+                self.mixed_types_list, raw_nlists, self.get_model_sels(), strict=True
             )
         ]
         ener_list = []
@@ -327,6 +344,51 @@ class LinearEnergyAtomicModel(BaseAtomicModel):
         data["models"] = models
         return super().deserialize(data)
 
+    def compute_or_load_stat(
+        self,
+        sampled_func: Callable[[], list[dict]],
+        stat_file_path: DPPath | None = None,
+        compute_or_load_out_stat: bool = True,
+        preset_observed_type: list[str] | None = None,
+    ) -> None:
+        """Compute or load the statistics parameters of the model.
+
+        For LinearEnergyAtomicModel, this first computes input stats for each
+        sub-model (without output stats), then computes its own output stats.
+
+        Parameters
+        ----------
+        sampled_func
+            The lazy sampled function to get data frames from different data systems.
+        stat_file_path
+            The path to the stat file.
+        compute_or_load_out_stat : bool
+            Whether to compute the output statistics.
+        """
+        # Compute observed type once at parent level, then propagate to
+        # sub-models via preset_observed_type to avoid redundant computation.
+        obs_stat_path = stat_file_path
+        if obs_stat_path is not None and self.type_map is not None:
+            obs_stat_path = obs_stat_path / " ".join(self.type_map)
+        self._collect_and_set_observed_type(
+            sampled_func, obs_stat_path, preset_observed_type
+        )
+
+        for md in self.models:
+            md.compute_or_load_stat(
+                sampled_func,
+                stat_file_path,
+                compute_or_load_out_stat=False,
+                preset_observed_type=self._observed_type,
+            )
+
+        if stat_file_path is not None and self.type_map is not None:
+            stat_file_path /= " ".join(self.type_map)
+
+        if compute_or_load_out_stat:
+            wrapped_sampler = self._make_wrapped_sampler(sampled_func)
+            self.compute_or_load_out_stat(wrapped_sampler, stat_file_path)
+
     def _compute_weight(
         self,
         extended_coord: Array,
@@ -337,9 +399,11 @@ class LinearEnergyAtomicModel(BaseAtomicModel):
         xp = array_api_compat.array_namespace(extended_coord, extended_atype, nlists_)
         nmodels = len(self.models)
         nframes, nloc, _ = nlists_[0].shape
+        dev = array_api_compat.device(extended_coord)
         # the dtype of weights is the interface data type.
         return [
-            xp.ones((nframes, nloc, 1), dtype=GLOBAL_NP_FLOAT_PRECISION) / nmodels
+            xp.ones((nframes, nloc, 1), dtype=GLOBAL_NP_FLOAT_PRECISION, device=dev)
+            / nmodels
             for _ in range(nmodels)
         ]
 
@@ -401,7 +465,7 @@ class DPZBLLinearEnergyAtomicModel(LinearEnergyAtomicModel):
         sw_rmin: float,
         sw_rmax: float,
         type_map: list[str],
-        smin_alpha: Optional[float] = 0.1,
+        smin_alpha: float | None = 0.1,
         **kwargs: Any,
     ) -> None:
         models = [dp_model, zbl_model]
@@ -510,4 +574,4 @@ class DPZBLLinearEnergyAtomicModel(LinearEnergyAtomicModel):
         # to handle masked atoms
         coef = xp.where(sigma != 0, coef, xp.zeros_like(coef))
         self.zbl_weight = coef
-        return [1 - xp.expand_dims(coef, -1), xp.expand_dims(coef, -1)]
+        return [1 - xp.expand_dims(coef, axis=-1), xp.expand_dims(coef, axis=-1)]

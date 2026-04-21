@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
+from collections.abc import (
+    Callable,
+)
 from typing import (
     Any,
-    Callable,
     NoReturn,
-    Optional,
-    Union,
 )
 
 import array_api_compat
@@ -215,7 +215,7 @@ class RepformerArgs:
         use_sqrt_nnei: bool = True,
         g1_out_conv: bool = True,
         g1_out_mlp: bool = True,
-        ln_eps: Optional[float] = 1e-5,
+        ln_eps: float | None = 1e-5,
     ) -> None:
         r"""The constructor for the RepformerArgs class which defines the parameters of the repformer block in DPA2 descriptor.
 
@@ -369,13 +369,87 @@ class RepformerArgs:
 
 @BaseDescriptor.register("dpa2")
 class DescrptDPA2(NativeOP, BaseDescriptor):
+    r"""The DPA-2 descriptor[1]_.
+
+    The DPA-2 descriptor combines a repinit block and a repformer block to extract
+    atomic representations. The overall descriptor is computed as:
+
+    .. math::
+        \mathcal{D}^i = \mathrm{Repformer}(\mathrm{Linear}(\mathrm{Repinit}(\mathcal{R}^i, \mathcal{T}^i))),
+
+    where :math:`\mathcal{R}^i` is the environment matrix and :math:`\mathcal{T}^i` is the
+    type embedding.
+
+    The repinit block computes initial node and edge representations using attention-based
+    message passing. The repformer block further refines these representations through
+    multiple layers of graph convolution and attention mechanisms.
+
+    The final output dimension is:
+
+    .. math::
+        \dim(\mathcal{D}^i) = \text{g1\_dim} + \text{tebd\_dim} \quad (\text{if concat\_output\_tebd}).
+
+    Parameters
+    ----------
+    repinit : Union[RepinitArgs, dict]
+        The arguments used to initialize the repinit block, see docstr in `RepinitArgs` for details information.
+    repformer : Union[RepformerArgs, dict]
+        The arguments used to initialize the repformer block, see docstr in `RepformerArgs` for details information.
+    concat_output_tebd : bool, optional
+        Whether to concat type embedding at the output of the descriptor.
+    precision : str, optional
+        The precision of the embedding net parameters.
+    smooth : bool, optional
+        Whether to use smoothness in processes such as attention weights calculation.
+    exclude_types : list[list[int]], optional
+        The excluded pairs of types which have no interaction with each other.
+        For example, `[[0, 1]]` means no interaction between type 0 and type 1.
+    env_protection : float, optional
+        Protection parameter to prevent division by zero errors during environment matrix calculations.
+        For example, when using paddings, there may be zero distances of neighbors, which may make division by zero error during environment matrix calculations without protection.
+    trainable : bool, optional
+        If the parameters are trainable.
+    seed : int, optional
+        (Unused yet) Random seed for parameter initialization.
+    add_tebd_to_repinit_out : bool, optional
+        Whether to add type embedding to the output representation from repinit before inputting it into repformer.
+    use_econf_tebd : bool, Optional
+        Whether to use electronic configuration type embedding.
+    use_tebd_bias : bool, Optional
+        Whether to use bias in the type embedding layer.
+    type_map : list[str], Optional
+        A list of strings. Give the name to each type of atoms.
+
+    Returns
+    -------
+    descriptor:         torch.Tensor
+        the descriptor of shape nf x nloc x g1_dim.
+        invariant single-atom representation.
+    g2:                 torch.Tensor
+        invariant pair-atom representation.
+    h2:                 torch.Tensor
+        equivariant pair-atom representation.
+    rot_mat:            torch.Tensor
+        rotation matrix for equivariant fittings
+    sw:                 torch.Tensor
+        The switch function for decaying inverse distance.
+
+    References
+    ----------
+    .. [1] Zhang, D., Liu, X., Zhang, X. et al. DPA-2: a
+       large atomic model as a multi-task learner. npj
+       Comput Mater 10, 293 (2024). https://doi.org/10.1038/s41524-024-01493-2
+    """
+
+    _update_sel_cls = UpdateSel
+
     def __init__(
         self,
         ntypes: int,
         # args for repinit
-        repinit: Union[RepinitArgs, dict],
+        repinit: RepinitArgs | dict,
         # args for repformer
-        repformer: Union[RepformerArgs, dict],
+        repformer: RepformerArgs | dict,
         # kwargs for descriptor
         concat_output_tebd: bool = True,
         precision: str = "float64",
@@ -383,67 +457,13 @@ class DescrptDPA2(NativeOP, BaseDescriptor):
         exclude_types: list[tuple[int, int]] = [],
         env_protection: float = 0.0,
         trainable: bool = True,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         add_tebd_to_repinit_out: bool = False,
         use_econf_tebd: bool = False,
         use_tebd_bias: bool = False,
-        type_map: Optional[list[str]] = None,
+        type_map: list[str] | None = None,
     ) -> None:
-        r"""The DPA-2 descriptor[1]_.
-
-        Parameters
-        ----------
-        repinit : Union[RepinitArgs, dict]
-            The arguments used to initialize the repinit block, see docstr in `RepinitArgs` for details information.
-        repformer : Union[RepformerArgs, dict]
-            The arguments used to initialize the repformer block, see docstr in `RepformerArgs` for details information.
-        concat_output_tebd : bool, optional
-            Whether to concat type embedding at the output of the descriptor.
-        precision : str, optional
-            The precision of the embedding net parameters.
-        smooth : bool, optional
-            Whether to use smoothness in processes such as attention weights calculation.
-        exclude_types : list[list[int]], optional
-            The excluded pairs of types which have no interaction with each other.
-            For example, `[[0, 1]]` means no interaction between type 0 and type 1.
-        env_protection : float, optional
-            Protection parameter to prevent division by zero errors during environment matrix calculations.
-            For example, when using paddings, there may be zero distances of neighbors, which may make division by zero error during environment matrix calculations without protection.
-        trainable : bool, optional
-            If the parameters are trainable.
-        seed : int, optional
-            (Unused yet) Random seed for parameter initialization.
-        add_tebd_to_repinit_out : bool, optional
-            Whether to add type embedding to the output representation from repinit before inputting it into repformer.
-        use_econf_tebd : bool, Optional
-            Whether to use electronic configuration type embedding.
-        use_tebd_bias : bool, Optional
-            Whether to use bias in the type embedding layer.
-        type_map : list[str], Optional
-            A list of strings. Give the name to each type of atoms.
-
-        Returns
-        -------
-        descriptor:         torch.Tensor
-            the descriptor of shape nf x nloc x g1_dim.
-            invariant single-atom representation.
-        g2:                 torch.Tensor
-            invariant pair-atom representation.
-        h2:                 torch.Tensor
-            equivariant pair-atom representation.
-        rot_mat:            torch.Tensor
-            rotation matrix for equivariant fittings
-        sw:                 torch.Tensor
-            The switch function for decaying inverse distance.
-
-        References
-        ----------
-        .. [1] Zhang, D., Liu, X., Zhang, X. et al. DPA-2: a
-           large atomic model as a multi-task learner. npj
-           Comput Mater 10, 293 (2024). https://doi.org/10.1038/s41524-024-01493-2
-        """
-
-        def init_subclass_params(sub_data: Union[dict, Any], sub_class: type) -> Any:
+        def init_subclass_params(sub_data: dict | Any, sub_class: type) -> Any:
             if isinstance(sub_data, dict):
                 return sub_class(**sub_data)
             elif isinstance(sub_data, sub_class):
@@ -573,6 +593,7 @@ class DescrptDPA2(NativeOP, BaseDescriptor):
         self.smooth = smooth
         self.exclude_types = exclude_types
         self.env_protection = env_protection
+        self.rcut_smth = self.repinit.get_rcut_smth()
         self.trainable = trainable
         self.add_tebd_to_repinit_out = add_tebd_to_repinit_out
 
@@ -748,8 +769,8 @@ class DescrptDPA2(NativeOP, BaseDescriptor):
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
-        path: Optional[DPPath] = None,
+        merged: Callable[[], list[dict]] | list[dict],
+        path: DPPath | None = None,
     ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.
@@ -806,8 +827,9 @@ class DescrptDPA2(NativeOP, BaseDescriptor):
         coord_ext: Array,
         atype_ext: Array,
         nlist: Array,
-        mapping: Optional[Array] = None,
-    ) -> tuple[Array, Array]:
+        mapping: Array | None = None,
+        fparam: Array | None = None,
+    ) -> tuple[Array, Array, Array, Array, Array]:
         """Compute the descriptor.
 
         Parameters
@@ -1073,7 +1095,7 @@ class DescrptDPA2(NativeOP, BaseDescriptor):
     def update_sel(
         cls,
         train_data: DeepmdDataSystem,
-        type_map: Optional[list[str]],
+        type_map: list[str] | None,
         local_jdata: dict,
     ) -> tuple[Array, Array]:
         """Update the selection and perform neighbor statistics.
@@ -1095,7 +1117,7 @@ class DescrptDPA2(NativeOP, BaseDescriptor):
             The minimum distance between two atoms
         """
         local_jdata_cpy = local_jdata.copy()
-        update_sel = UpdateSel()
+        update_sel = cls._update_sel_cls()
         min_nbor_dist, repinit_sel = update_sel.update_one_sel(
             train_data,
             type_map,

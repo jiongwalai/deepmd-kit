@@ -2,11 +2,11 @@
 from abc import (
     abstractmethod,
 )
+from collections.abc import (
+    Callable,
+)
 from typing import (
     Any,
-    Callable,
-    Optional,
-    Union,
 )
 
 import array_api_compat
@@ -35,9 +35,15 @@ from deepmd.dpmodel.utils.seed import (
 from deepmd.env import (
     GLOBAL_NP_FLOAT_PRECISION,
 )
+from deepmd.utils.env_mat_stat import (
+    StatItem,
+)
 from deepmd.utils.finetune import (
     get_index_between_two_maps,
     map_atom_exclude_types,
+)
+from deepmd.utils.path import (
+    DPPath,
 )
 
 from .base_fitting import (
@@ -113,21 +119,21 @@ class GeneralFitting(NativeOP, BaseFitting):
         numb_fparam: int = 0,
         numb_aparam: int = 0,
         dim_case_embd: int = 0,
-        bias_atom_e: Optional[Array] = None,
-        rcond: Optional[float] = None,
+        bias_atom_e: Array | None = None,
+        rcond: float | None = None,
         tot_ener_zero: bool = False,
-        trainable: Optional[list[bool]] = None,
+        trainable: list[bool] | None = None,
         activation_function: str = "tanh",
         precision: str = DEFAULT_PRECISION,
-        layer_name: Optional[list[Optional[str]]] = None,
+        layer_name: list[str | None] | None = None,
         use_aparam_as_mask: bool = False,
         spin: Any = None,
         mixed_types: bool = True,
         exclude_types: list[int] = [],
-        remove_vaccum_contribution: Optional[list[bool]] = None,
-        type_map: Optional[list[str]] = None,
-        seed: Optional[Union[int, list[int]]] = None,
-        default_fparam: Optional[list[float]] = None,
+        remove_vaccum_contribution: list[bool] | None = None,
+        type_map: list[str] | None = None,
+        seed: int | list[int] | None = None,
+        default_fparam: list[float] | None = None,
     ) -> None:
         self.var_name = var_name
         self.ntypes = ntypes
@@ -224,8 +230,9 @@ class GeneralFitting(NativeOP, BaseFitting):
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
+        merged: Callable[[], list[dict]] | list[dict],
         protection: float = 1e-2,
+        stat_file_path: DPPath | None = None,
     ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the fittings from packed data.
@@ -241,51 +248,160 @@ class GeneralFitting(NativeOP, BaseFitting):
                 the lazy function helps by only sampling once.
         protection : float
             Divided-by-zero protection
+        stat_file_path : Optional[DPPath]
+            The path to the stat file.
         """
         if self.numb_fparam == 0 and self.numb_aparam == 0:
             # skip data statistics
             return
-        if callable(merged):
-            sampled = merged()
-        else:
-            sampled = merged
         # stat fparam
         if self.numb_fparam > 0:
-            cat_data = np.concatenate([frame["fparam"] for frame in sampled], axis=0)
-            cat_data = np.reshape(cat_data, [-1, self.numb_fparam])
-            fparam_avg = np.mean(cat_data, axis=0)
-            fparam_std = np.std(cat_data, axis=0, ddof=0)  # ddof=0 for population std
-            fparam_std = np.where(
-                fparam_std < protection,
-                np.array(protection, dtype=fparam_std.dtype),
-                fparam_std,
+            if (
+                stat_file_path is not None
+                and stat_file_path.is_dir()
+                and (stat_file_path / "fparam").is_file()
+            ):
+                fparam_stats = self._load_param_stats_from_file(
+                    stat_file_path, "fparam", self.numb_fparam
+                )
+            else:
+                sampled = merged() if callable(merged) else merged
+                for ii, frame in enumerate(sampled):
+                    if "find_fparam" not in frame:
+                        raise ValueError(
+                            f"numb_fparam > 0 but fparam is not acquired "
+                            f"for system {ii}."
+                        )
+                    if not frame["find_fparam"]:
+                        raise ValueError(
+                            f"numb_fparam > 0 but no fparam data is provided "
+                            f"for system {ii}."
+                        )
+                cat_data = np.concatenate(
+                    [frame["fparam"] for frame in sampled], axis=0
+                )
+                cat_data = np.reshape(cat_data, [-1, self.numb_fparam])
+                fparam_stats = [
+                    StatItem(
+                        number=cat_data.shape[0],
+                        sum=np.sum(cat_data[:, ii]),
+                        squared_sum=np.sum(cat_data[:, ii] ** 2),
+                    )
+                    for ii in range(self.numb_fparam)
+                ]
+                if stat_file_path is not None:
+                    self._save_param_stats_to_file(
+                        stat_file_path, "fparam", fparam_stats
+                    )
+            fparam_avg = np.array(
+                [s.compute_avg() for s in fparam_stats], dtype=np.float64
+            )
+            fparam_std = np.array(
+                [s.compute_std(protection=protection) for s in fparam_stats],
+                dtype=np.float64,
             )
             fparam_inv_std = 1.0 / fparam_std
-            self.fparam_avg = fparam_avg.astype(self.fparam_avg.dtype)
-            self.fparam_inv_std = fparam_inv_std.astype(self.fparam_inv_std.dtype)
+            xp = array_api_compat.array_namespace(self.fparam_avg)
+            self.fparam_avg = xp.asarray(
+                fparam_avg,
+                dtype=self.fparam_avg.dtype,
+                device=array_api_compat.device(self.fparam_avg),
+            )
+            self.fparam_inv_std = xp.asarray(
+                fparam_inv_std,
+                dtype=self.fparam_inv_std.dtype,
+                device=array_api_compat.device(self.fparam_inv_std),
+            )
         # stat aparam
         if self.numb_aparam > 0:
-            sys_sumv = []
-            sys_sumv2 = []
-            sys_sumn = []
-            for ss_ in [frame["aparam"] for frame in sampled]:
-                ss = np.reshape(ss_, [-1, self.numb_aparam])
-                sys_sumv.append(np.sum(ss, axis=0))
-                sys_sumv2.append(np.sum(ss * ss, axis=0))
-                sys_sumn.append(ss.shape[0])
-            sumv = np.sum(np.stack(sys_sumv), axis=0)
-            sumv2 = np.sum(np.stack(sys_sumv2), axis=0)
-            sumn = sum(sys_sumn)
-            aparam_avg = sumv / sumn
-            aparam_std = np.sqrt(sumv2 / sumn - (sumv / sumn) ** 2)
-            aparam_std = np.where(
-                aparam_std < protection,
-                np.array(protection, dtype=aparam_std.dtype),
-                aparam_std,
+            if (
+                stat_file_path is not None
+                and stat_file_path.is_dir()
+                and (stat_file_path / "aparam").is_file()
+            ):
+                aparam_stats = self._load_param_stats_from_file(
+                    stat_file_path, "aparam", self.numb_aparam
+                )
+            else:
+                sampled = merged() if callable(merged) else merged
+                for ii, frame in enumerate(sampled):
+                    if "find_aparam" not in frame:
+                        raise ValueError(
+                            f"numb_aparam > 0 but aparam is not acquired "
+                            f"for system {ii}."
+                        )
+                    if not frame["find_aparam"]:
+                        raise ValueError(
+                            f"numb_aparam > 0 but no aparam data is provided "
+                            f"for system {ii}."
+                        )
+                sys_sumv = []
+                sys_sumv2 = []
+                sys_sumn = []
+                for ss_ in [frame["aparam"] for frame in sampled]:
+                    ss = np.reshape(ss_, [-1, self.numb_aparam])
+                    sys_sumv.append(np.sum(ss, axis=0))
+                    sys_sumv2.append(np.sum(ss * ss, axis=0))
+                    sys_sumn.append(ss.shape[0])
+                sumv = np.sum(np.stack(sys_sumv), axis=0)
+                sumv2 = np.sum(np.stack(sys_sumv2), axis=0)
+                sumn = sum(sys_sumn)
+                aparam_stats = [
+                    StatItem(
+                        number=sumn,
+                        sum=sumv[ii],
+                        squared_sum=sumv2[ii],
+                    )
+                    for ii in range(self.numb_aparam)
+                ]
+                if stat_file_path is not None:
+                    self._save_param_stats_to_file(
+                        stat_file_path, "aparam", aparam_stats
+                    )
+            aparam_avg = np.array(
+                [s.compute_avg() for s in aparam_stats], dtype=np.float64
+            )
+            aparam_std = np.array(
+                [s.compute_std(protection=protection) for s in aparam_stats],
+                dtype=np.float64,
             )
             aparam_inv_std = 1.0 / aparam_std
-            self.aparam_avg = aparam_avg.astype(self.aparam_avg.dtype)
-            self.aparam_inv_std = aparam_inv_std.astype(self.aparam_inv_std.dtype)
+            xp = array_api_compat.array_namespace(self.aparam_avg)
+            self.aparam_avg = xp.asarray(
+                aparam_avg,
+                dtype=self.aparam_avg.dtype,
+                device=array_api_compat.device(self.aparam_avg),
+            )
+            self.aparam_inv_std = xp.asarray(
+                aparam_inv_std,
+                dtype=self.aparam_inv_std.dtype,
+                device=array_api_compat.device(self.aparam_inv_std),
+            )
+
+    @staticmethod
+    def _save_param_stats_to_file(
+        stat_file_path: DPPath,
+        name: str,
+        stats: list[StatItem],
+    ) -> None:
+        stat_file_path.mkdir(exist_ok=True, parents=True)
+        fp = stat_file_path / name
+        arr = np.array([[s.number, s.sum, s.squared_sum] for s in stats])
+        fp.save_numpy(arr)
+
+    @staticmethod
+    def _load_param_stats_from_file(
+        stat_file_path: DPPath,
+        name: str,
+        numb: int,
+    ) -> list[StatItem]:
+        fp = stat_file_path / name
+        arr = fp.load_numpy()
+        assert arr.shape == (numb, 3)
+        return [
+            StatItem(number=arr[ii][0], sum=arr[ii][1], squared_sum=arr[ii][2])
+            for ii in range(numb)
+        ]
 
     @abstractmethod
     def _net_out_dim(self) -> int:
@@ -303,6 +419,10 @@ class GeneralFitting(NativeOP, BaseFitting):
     def has_default_fparam(self) -> bool:
         """Check if the fitting has default frame parameters."""
         return self.default_fparam is not None
+
+    def get_default_fparam(self) -> list[float] | None:
+        """Get the default frame parameters."""
+        return self.default_fparam
 
     def get_sel_type(self) -> list[int]:
         """Get the selected atom types of this model.
@@ -325,7 +445,7 @@ class GeneralFitting(NativeOP, BaseFitting):
         self.case_embd = np.eye(self.dim_case_embd, dtype=self.prec)[case_idx]
 
     def change_type_map(
-        self, type_map: list[str], model_with_new_type_stat: Optional[Any] = None
+        self, type_map: list[str], model_with_new_type_stat: Any | None = None
     ) -> None:
         """Change the type related params to new ones, according to `type_map` and the original one in the model.
         If there are new types in `type_map`, statistics will be updated accordingly to `model_with_new_type_stat` for these new types.
@@ -339,11 +459,14 @@ class GeneralFitting(NativeOP, BaseFitting):
         self.ntypes = len(type_map)
         self.reinit_exclude(map_atom_exclude_types(self.exclude_types, remap_index))
         if has_new_type:
+            xp = array_api_compat.array_namespace(self.bias_atom_e)
             extend_shape = [len(type_map), *list(self.bias_atom_e.shape[1:])]
-            extend_bias_atom_e = np.zeros(extend_shape, dtype=self.bias_atom_e.dtype)
-            self.bias_atom_e = np.concatenate(
-                [self.bias_atom_e, extend_bias_atom_e], axis=0
+            extend_bias_atom_e = xp.zeros(
+                extend_shape,
+                dtype=self.bias_atom_e.dtype,
+                device=array_api_compat.device(self.bias_atom_e),
             )
+            self.bias_atom_e = xp.concat([self.bias_atom_e, extend_bias_atom_e], axis=0)
         self.bias_atom_e = self.bias_atom_e[remap_index]
 
     def __setitem__(self, key: str, value: Any) -> None:
@@ -447,11 +570,11 @@ class GeneralFitting(NativeOP, BaseFitting):
         self,
         descriptor: Array,
         atype: Array,
-        gr: Optional[Array] = None,
-        g2: Optional[Array] = None,
-        h2: Optional[Array] = None,
-        fparam: Optional[Array] = None,
-        aparam: Optional[Array] = None,
+        gr: Array | None = None,
+        g2: Array | None = None,
+        h2: Array | None = None,
+        fparam: Array | None = None,
+        aparam: Array | None = None,
     ) -> dict[str, Array]:
         """Calculate the fitting.
 
@@ -560,9 +683,12 @@ class GeneralFitting(NativeOP, BaseFitting):
                 )
 
         # calculate the prediction
+        results: dict[str, Array] = {}
         if not self.mixed_types:
             outs = xp.zeros(
-                [nf, nloc, net_dim_out], dtype=get_xp_precision(xp, self.precision)
+                [nf, nloc, net_dim_out],
+                dtype=get_xp_precision(xp, self.precision),
+                device=array_api_compat.device(descriptor),
             )
             for type_i in range(self.ntypes):
                 mask = xp.tile(
@@ -596,4 +722,5 @@ class GeneralFitting(NativeOP, BaseFitting):
         exclude_mask = xp.astype(exclude_mask, xp.bool)
         # nf x nloc x nod
         outs = xp.where(exclude_mask[:, :, None], outs, xp.zeros_like(outs))
-        return {self.var_name: outs}
+        results[self.var_name] = outs
+        return results

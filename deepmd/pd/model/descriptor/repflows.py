@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-from typing import (
+from collections.abc import (
     Callable,
-    Optional,
-    Union,
 )
 
 import paddle
@@ -58,15 +56,15 @@ from .repflow_layer import (
 if not ENABLE_CUSTOMIZED_OP:
 
     def border_op(
-        argument0,
-        argument1,
-        argument2,
-        argument3,
-        argument4,
-        argument5,
-        argument6,
-        argument7,
-        argument8,
+        argument0: paddle.Tensor,
+        argument1: paddle.Tensor,
+        argument2: paddle.Tensor,
+        argument3: paddle.Tensor,
+        argument4: paddle.Tensor,
+        argument5: paddle.Tensor,
+        argument6: paddle.Tensor,
+        argument7: paddle.Tensor,
+        argument8: paddle.Tensor,
     ) -> paddle.Tensor:
         raise NotImplementedError(
             "The 'border_op' operator is unavailable because the custom Paddle OP library was not built when freezing the model.\n"
@@ -194,11 +192,11 @@ class DescrptBlockRepflows(DescriptorBlock):
 
     def __init__(
         self,
-        e_rcut,
-        e_rcut_smth,
+        e_rcut: float,
+        e_rcut_smth: float,
         e_sel: int,
-        a_rcut,
-        a_rcut_smth,
+        a_rcut: float,
+        a_rcut_smth: float,
         a_sel: int,
         ntypes: int,
         nlayers: int = 6,
@@ -227,7 +225,7 @@ class DescrptBlockRepflows(DescriptorBlock):
         sel_reduce_factor: float = 10.0,
         use_loc_mapping: bool = True,
         optim_update: bool = True,
-        seed: Optional[Union[int, list[int]]] = None,
+        seed: int | list[int] | None = None,
         trainable: bool = True,
     ) -> None:
         super().__init__()
@@ -396,7 +394,7 @@ class DescrptBlockRepflows(DescriptorBlock):
         """Returns the embedding dimension e_dim."""
         return self.e_dim
 
-    def __setitem__(self, key, value) -> None:
+    def __setitem__(self, key: str, value: paddle.Tensor) -> None:
         if key in ("avg", "data_avg", "davg"):
             self.mean = value
         elif key in ("std", "data_std", "dstd"):
@@ -404,7 +402,7 @@ class DescrptBlockRepflows(DescriptorBlock):
         else:
             raise KeyError(key)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> paddle.Tensor:
         if key in ("avg", "data_avg", "davg"):
             return self.mean
         elif key in ("std", "data_std", "dstd"):
@@ -429,17 +427,17 @@ class DescrptBlockRepflows(DescriptorBlock):
         return self.env_protection
 
     @property
-    def dim_out(self):
+    def dim_out(self) -> int:
         """Returns the output dimension of this descriptor."""
         return self.n_dim
 
     @property
-    def dim_in(self):
+    def dim_in(self) -> int:
         """Returns the atomic input dimension of this descriptor."""
         return self.n_dim
 
     @property
-    def dim_emb(self):
+    def dim_emb(self) -> int:
         """Returns the embedding dimension e_dim."""
         return self.get_dim_emb()
 
@@ -455,10 +453,10 @@ class DescrptBlockRepflows(DescriptorBlock):
         nlist: paddle.Tensor,
         extended_coord: paddle.Tensor,
         extended_atype: paddle.Tensor,
-        extended_atype_embd: Optional[paddle.Tensor] = None,
-        mapping: Optional[paddle.Tensor] = None,
-        comm_dict: Optional[list[paddle.Tensor]] = None,
-    ):
+        extended_atype_embd: paddle.Tensor | None = None,
+        mapping: paddle.Tensor | None = None,
+        comm_dict: list[paddle.Tensor] | None = None,
+    ) -> paddle.Tensor:
         parallel_mode = comm_dict is not None
         if not parallel_mode:
             if paddle.in_dynamic_mode():
@@ -730,8 +728,8 @@ class DescrptBlockRepflows(DescriptorBlock):
 
     def compute_input_stats(
         self,
-        merged: Union[Callable[[], list[dict]], list[dict]],
-        path: Optional[DPPath] = None,
+        merged: Callable[[], list[dict]] | list[dict],
+        path: DPPath | None = None,
     ) -> None:
         """
         Compute the input statistics (e.g. mean and stddev) for the descriptors from packed data.

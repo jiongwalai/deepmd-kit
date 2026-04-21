@@ -10,9 +10,6 @@ from collections import (
 from collections.abc import (
     Iterator,
 )
-from typing import (
-    Optional,
-)
 
 import numpy as np
 
@@ -92,8 +89,12 @@ class StatItem:
         if self.number == 0:
             return default
         val = np.sqrt(
-            self.squared_sum / self.number
-            - np.multiply(self.sum / self.number, self.sum / self.number)
+            np.clip(
+                self.squared_sum / self.number
+                - np.multiply(self.sum / self.number, self.sum / self.number),
+                a_min=0,
+                a_max=None,
+            )
         )
         if np.abs(val) < protection:
             val = protection
@@ -169,7 +170,7 @@ class EnvMatStat(ABC):
             )
 
     def load_or_compute_stats(
-        self, data: list[dict[str, np.ndarray]], path: Optional[DPPath] = None
+        self, data: list[dict[str, np.ndarray]], path: DPPath | None = None
     ) -> None:
         """Load the statistics of the environment matrix if it exists, otherwise compute and save it.
 
