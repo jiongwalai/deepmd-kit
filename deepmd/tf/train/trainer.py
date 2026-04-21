@@ -63,9 +63,9 @@ from deepmd.utils.data import (
 
 log = logging.getLogger(__name__)
 
-# nvnmd
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+# apumd
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
 
 
@@ -88,13 +88,13 @@ class DPTrainer:
         # model config
         model_param = jdata["model"]
 
-        # nvnmd
-        self.nvnmd_param = jdata.get("nvnmd", {})
-        nvnmd_cfg.init_from_jdata(self.nvnmd_param)
-        if nvnmd_cfg.enable:
-            nvnmd_cfg.init_from_deepmd_input(model_param)
-            nvnmd_cfg.disp_message()
-            nvnmd_cfg.save()
+        # apumd
+        self.apumd_param = jdata.get("apumd", {})
+        apumd_cfg.init_from_jdata(self.apumd_param)
+        if apumd_cfg.enable:
+            apumd_cfg.init_from_deepmd_input(model_param)
+            apumd_cfg.disp_message()
+            apumd_cfg.save()
 
         # init model
         self.model = Model(**model_param)

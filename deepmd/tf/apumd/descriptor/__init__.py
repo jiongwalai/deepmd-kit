@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-"""nvnmd.se_a
+"""apumd.se_a
 ==========.
 
 Provides

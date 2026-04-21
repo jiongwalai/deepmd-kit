@@ -27,7 +27,7 @@ from deepmd.tf.env import (
     FITTING_NET_PATTERN,
     tf,
 )
-from deepmd.tf.nvnmd.entrypoints.freeze import (
+from deepmd.tf.apumd.entrypoints.freeze import (
     save_weight,
 )
 from deepmd.tf.utils.errors import (

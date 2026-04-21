@@ -11,7 +11,7 @@ from . import (
     descriptor,
     fit,
     loss,
-    nvnmd,
+    apumd,
     utils,
 )
 from .env import (
@@ -47,6 +47,6 @@ __all__ = [
     "fit",
     "loss",
     "network",
-    "nvnmd",
+    "apumd",
     "utils",
 ]

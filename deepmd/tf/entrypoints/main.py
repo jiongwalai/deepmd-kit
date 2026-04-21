@@ -31,7 +31,7 @@ from deepmd.tf.entrypoints import (
 from deepmd.tf.loggers import (
     set_log_handles,
 )
-from deepmd.tf.nvnmd.entrypoints.train import (
+from deepmd.tf.apumd.entrypoints.train import (
     train_nvnmd,
 )
 

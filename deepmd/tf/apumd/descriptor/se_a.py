@@ -11,10 +11,10 @@ from deepmd.tf.env import (
 )
 
 #
-from deepmd.tf.nvnmd.utils.config import (
-    nvnmd_cfg,
+from deepmd.tf.apumd.utils.config import (
+    apumd_cfg,
 )
-from deepmd.tf.nvnmd.utils.weight import (
+from deepmd.tf.apumd.utils.weight import (
     get_normalize,
 )
 from deepmd.tf.utils.graph import (
@@ -28,45 +28,45 @@ log = logging.getLogger(__name__)
 
 
 def build_davg_dstd():
-    r"""Get the davg and dstd from the dictionary nvnmd_cfg.
+    r"""Get the davg and dstd from the dictionary apumd_cfg.
     The davg and dstd have been obtained by training CNN.
     """
-    davg, dstd = get_normalize(nvnmd_cfg.weight)
+    davg, dstd = get_normalize(apumd_cfg.weight)
     return davg, dstd
 
 
 def check_switch_range(davg, dstd) -> None:
     r"""Check the range of switch, let it in range [-2, 14]."""
-    rmin = nvnmd_cfg.dscp["rcut_smth"]
+    rmin = apumd_cfg.dscp["rcut_smth"]
     #
     namelist = [n.name for n in tf.get_default_graph().as_graph_def().node]
     if "train_attr/min_nbor_dist" in namelist:
         min_dist = get_tensor_by_name_from_graph(
             tf.get_default_graph(), "train_attr/min_nbor_dist"
         )
-    elif "train_attr.min_nbor_dist" in nvnmd_cfg.weight.keys():
-        if nvnmd_cfg.weight["train_attr.min_nbor_dist"] < 1e-6:
+    elif "train_attr.min_nbor_dist" in apumd_cfg.weight.keys():
+        if apumd_cfg.weight["train_attr.min_nbor_dist"] < 1e-6:
             min_dist = rmin
         else:
-            min_dist = nvnmd_cfg.weight["train_attr.min_nbor_dist"]
+            min_dist = apumd_cfg.weight["train_attr.min_nbor_dist"]
     else:
         min_dist = None
 
     # fix the bug: if model initial mode is 'init_from_model',
     # we need dmin to calculate smin and smax in mapt.py
     if min_dist is not None:
-        nvnmd_cfg.dscp["dmin"] = min_dist
-        nvnmd_cfg.save()
+        apumd_cfg.dscp["dmin"] = min_dist
+        apumd_cfg.save()
 
     # if davg and dstd is None, the model initial mode is in
     #  'init_from_model', 'restart', 'init_from_frz_model', 'finetune'
     if (davg is not None) and (dstd is not None):
-        nvnmd_cfg.get_s_range(davg, dstd)
+        apumd_cfg.get_s_range(davg, dstd)
 
 
 def build_op_descriptor():
     r"""Replace se_a.py/DescrptSeA/build."""
-    if nvnmd_cfg.quantize_descriptor:
+    if apumd_cfg.quantize_descriptor:
         return op_module.prod_env_mat_a_nvnmd_quantize
     else:
         return op_module.prod_env_mat_a
@@ -77,8 +77,8 @@ def descrpt2r4(inputs, natoms):
     where :math:`r_{ji} = (x_{ji}, y_{ji}, z_{ji})` and
     :math:`r'_{ji} = (s_{ji}, \frac{s_{ji} x_{ji}}{r_{ji}}, \frac{s_{ji} y_{ji}}{r_{ji}}, \frac{s_{ji} z_{ji}}{r_{ji}})`.
     """
-    ntypes = nvnmd_cfg.dscp["ntype"]
-    NIDP = nvnmd_cfg.dscp["NIDP"]
+    ntypes = apumd_cfg.dscp["ntype"]
+    NIDP = apumd_cfg.dscp["NIDP"]
     ndescrpt = NIDP * 4
     start_index = 0
 
@@ -109,16 +109,16 @@ def descrpt2r4(inputs, natoms):
             # s
             table = GLOBAL_NP_FLOAT_PRECISION(
                 np.concatenate(
-                    [nvnmd_cfg.map["s"][type_i], nvnmd_cfg.map["h"][type_i]], axis=1
+                    [apumd_cfg.map["s"][type_i], apumd_cfg.map["h"][type_i]], axis=1
                 )
             )
             table_grad = GLOBAL_NP_FLOAT_PRECISION(
                 np.concatenate(
-                    [nvnmd_cfg.map["s_grad"][type_i], nvnmd_cfg.map["h_grad"][type_i]],
+                    [apumd_cfg.map["s_grad"][type_i], apumd_cfg.map["h_grad"][type_i]],
                     axis=1,
                 )
             )
-            table_info = nvnmd_cfg.map["cfg_u2s"]
+            table_info = apumd_cfg.map["cfg_u2s"]
             table_info = np.array([np.float64(v) for vs in table_info for v in vs])
             table_info = GLOBAL_NP_FLOAT_PRECISION(table_info)
 
@@ -188,11 +188,11 @@ def filter_lower_R42GR(
     shape_i = inputs_i.get_shape().as_list()
     inputs_reshape = tf.reshape(inputs_i, [-1, 4])
     natom = tf.shape(inputs_i)[0]
-    M1 = nvnmd_cfg.dscp["M1"]
+    M1 = apumd_cfg.dscp["M1"]
 
     type_input = 0 if (type_input < 0) else type_input
 
-    if nvnmd_cfg.quantize_descriptor:
+    if apumd_cfg.quantize_descriptor:
         # copy
         inputs_reshape = op_module.flt_nvnmd(inputs_reshape)
         inputs_reshape = tf.ensure_shape(inputs_reshape, [None, 4])
@@ -203,9 +203,9 @@ def filter_lower_R42GR(
         # s
         s = tf.reshape(tf.slice(inputs_reshape, [0, 0], [-1, 1]), [-1, 1])
         # G
-        table = GLOBAL_NP_FLOAT_PRECISION(nvnmd_cfg.map["g"][type_i])
-        table_grad = GLOBAL_NP_FLOAT_PRECISION(nvnmd_cfg.map["g_grad"][type_i])
-        table_info = nvnmd_cfg.map["cfg_s2g"]
+        table = GLOBAL_NP_FLOAT_PRECISION(apumd_cfg.map["g"][type_i])
+        table_grad = GLOBAL_NP_FLOAT_PRECISION(apumd_cfg.map["g_grad"][type_i])
+        table_info = apumd_cfg.map["cfg_s2g"]
         table_info = np.array([np.float64(v) for vs in table_info for v in vs])
         table_info = GLOBAL_NP_FLOAT_PRECISION(table_info)
         with tf.variable_scope("g", reuse=True):
@@ -227,13 +227,13 @@ def filter_lower_R42GR(
 
     else:
         xyz_scatter = tf.reshape(tf.slice(inputs_reshape, [0, 0], [-1, 1]), [-1, 1])
-        if nvnmd_cfg.restore_descriptor:
+        if apumd_cfg.restore_descriptor:
             trainable = False
             embedding_net_variables = {}
-            for key in nvnmd_cfg.weight.keys():
+            for key in apumd_cfg.weight.keys():
                 if "filter_type" in key:
                     key2 = key.replace(".", "/")
-                    embedding_net_variables[key2] = nvnmd_cfg.weight[key]
+                    embedding_net_variables[key2] = apumd_cfg.weight[key]
 
         if not is_exclude:
             xyz_scatter = embedding_net(
@@ -271,12 +271,12 @@ def filter_lower_R42GR(
 
 def filter_GR2D(xyz_scatter_1):
     r"""Replace se_a.py/_filter."""
-    NIX = nvnmd_cfg.dscp["NIX"]
-    M1 = nvnmd_cfg.dscp["M1"]
-    M2 = nvnmd_cfg.dscp["M2"]
-    NBIT_DATA_FL = nvnmd_cfg.nbit["NBIT_FIXD_FL"]
+    NIX = apumd_cfg.dscp["NIX"]
+    M1 = apumd_cfg.dscp["M1"]
+    M2 = apumd_cfg.dscp["M2"]
+    NBIT_DATA_FL = apumd_cfg.nbit["NBIT_FIXD_FL"]
 
-    if nvnmd_cfg.quantize_descriptor:
+    if apumd_cfg.quantize_descriptor:
         xyz_scatter_1 = tf.reshape(xyz_scatter_1, [-1, 4 * M1])
         # fix the number of bits of gradient
         xyz_scatter_1 = xyz_scatter_1 * (1.0 / NIX)
