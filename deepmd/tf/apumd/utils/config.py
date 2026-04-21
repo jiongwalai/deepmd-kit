@@ -4,7 +4,7 @@ import logging
 import copy
 import numpy as np
 
-from deepmd.tf.nvnmd.data.data import (
+from deepmd.tf.apumd.data.data import (
     NVNMD_CITATION,
     NVNMD_WELCOME,
     jdata_config_v0,
@@ -18,10 +18,10 @@ from deepmd.tf.nvnmd.data.data import (
     jdata_deepmd_input_v1_ni128,
     jdata_deepmd_input_v1_ni256,
 )
-from deepmd.tf.nvnmd.utils.fio import (
+from deepmd.tf.apumd.utils.fio import (
     FioDic,
 )
-from deepmd.tf.nvnmd.utils.op import (
+from deepmd.tf.apumd.utils.op import (
     r2s,
 )
 
@@ -325,12 +325,12 @@ class NvnmdConfig:
         r"""Set the number of type."""
         self.dscp["ntype"] = ntype
         self.config["dscp"]["ntype"] = ntype
-        nvnmd_cfg.save()
+        apumd_cfg.save()
 
     def get_s_range(self, davg, dstd):
         r"""Get the range of switch function."""
-        rmin = nvnmd_cfg.dscp["rcut_smth"]
-        rmax = nvnmd_cfg.dscp["rcut"]
+        rmin = apumd_cfg.dscp["rcut_smth"]
+        rmax = apumd_cfg.dscp["rcut"]
         ntype = self.dscp["ntype"]
         dmin = self.dscp["dmin"]
         #
@@ -341,7 +341,7 @@ class NvnmdConfig:
         smax = np.max(smax_)
         self.dscp["smin"] = smin
         self.dscp["smax"] = smax
-        nvnmd_cfg.save()
+        apumd_cfg.save()
         # check
         log.info(f"the range of s is [{smin}, {smax}]")
         if smax - smin > 32.0:
@@ -461,4 +461,4 @@ class NvnmdConfig:
 
 
 # global configuration for nvnmd
-nvnmd_cfg = NvnmdConfig(jdata_deepmd_input_v0["nvnmd"])
+apumd_cfg = NvnmdConfig(jdata_deepmd_input_v0["nvnmd"])

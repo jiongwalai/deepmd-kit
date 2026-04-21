@@ -3,7 +3,7 @@ from .argcheck import (
     nvnmd_args,
 )
 from .config import (
-    nvnmd_cfg,
+    apumd_cfg,
 )
 from .encode import (
     Encode,
@@ -26,7 +26,7 @@ from .weight import (
 
 __all__ = [
     "nvnmd_args",
-    "nvnmd_cfg",
+    "apumd_cfg",
     "Encode",
     "FioBin",
     "FioDic",

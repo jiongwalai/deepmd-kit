@@ -1,5 +1,5 @@
 {
-  "nvnmd": {
+  "apumd": {
     "version": 0,
     "max_nnei": 128,
     "net_size": 128,

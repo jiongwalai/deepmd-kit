@@ -26,8 +26,8 @@ from deepmd.common import (
     VALID_ACTIVATION,
     VALID_PRECISION,
 )
-from deepmd.utils.argcheck_nvnmd import (
-    nvnmd_args,
+from deepmd.utils.argcheck_apumd import (
+    apumd_args,
 )
 from deepmd.utils.plugin import (
     Plugin,
@@ -3454,7 +3454,7 @@ def gen_args(multi_task: bool = False) -> list[Argument]:
             learning_rate_args(),
             loss_args(),
             training_args(multi_task=multi_task),
-            nvnmd_args(),
+            apumd_args(),
         ]
     else:
         return [
@@ -3462,7 +3462,7 @@ def gen_args(multi_task: bool = False) -> list[Argument]:
             learning_rate_args(fold_subdoc=True),
             multi_loss_args(),
             training_args(multi_task=multi_task),
-            nvnmd_args(fold_subdoc=True),
+            apumd_args(fold_subdoc=True),
         ]
 
 
