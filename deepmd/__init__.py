@@ -19,9 +19,17 @@ if TYPE_CHECKING:
 try:
     from deepmd._version import version as __version__
 except ImportError:
-    from .__about__ import (
-        __version__,
-    )
+    try:
+        from .__about__ import (
+            __version__,
+        )
+    except ImportError:
+        try:
+            from importlib.metadata import version
+
+            __version__ = version("deepmd-kit")
+        except Exception:
+            __version__ = "unknown"
 
 
 def DeepPotential(*args: Any, **kwargs: Any) -> "DeepPotentialType":

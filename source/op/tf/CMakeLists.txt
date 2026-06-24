@@ -3,18 +3,18 @@
 file(
   GLOB
   OP_SRC
-  prod_env_mat_multi_device_nvnmd.cc
-  add_flt_nvnmd.cc
-  copy_flt_nvnmd.cc
-  flt_nvnmd.cc
-  map_flt_nvnmd.cc
-  mul_flt_nvnmd.cc
-  matmul_flt_nvnmd.cc
-  matmul_flt2fix_nvnmd.cc
-  matmul_fitnet_nvnmd.cc
-  dotmul_flt_nvnmd.cc
-  quantize_nvnmd.cc
-  tanh4_flt_nvnmd.cc
+  prod_env_mat_multi_device_apumd.cc
+  add_flt_apumd.cc
+  copy_flt_apumd.cc
+  flt_apumd.cc
+  map_flt_apumd.cc
+  mul_flt_apumd.cc
+  matmul_flt_apumd.cc
+  matmul_flt2fix_apumd.cc
+  matmul_fitnet_apumd.cc
+  dotmul_flt_apumd.cc
+  quantize_apumd.cc
+  tanh4_flt_apumd.cc
   custom_op.cc
   prod_force.cc
   prod_virial.cc

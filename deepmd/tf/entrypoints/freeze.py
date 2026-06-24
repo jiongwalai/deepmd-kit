@@ -26,7 +26,7 @@ from deepmd.tf.env import (
     FITTING_NET_PATTERN,
     tf,
 )
-from deepmd.tf.nvnmd.entrypoints.freeze import (
+from deepmd.tf.apumd.entrypoints.freeze import (
     save_weight,
 )
 from deepmd.tf.utils.errors import (
@@ -299,7 +299,7 @@ def freeze(
     checkpoint_folder: str,
     output: str,
     node_names: str | None = None,
-    nvnmd_weight: str | None = None,
+    apumd_weight: str | None = None,
     **kwargs: Any,
 ) -> None:
     """Freeze the graph in supplied folder.
@@ -312,8 +312,8 @@ def freeze(
         output file name
     node_names : Optional[str], optional
         names of nodes to output, by default None
-    nvnmd_weight : Optional[str], optional
-        nvnmd weight file
+    apumd_weight : Optional[str], optional
+        apumd weight file
     **kwargs
         other arguments
     """
@@ -375,8 +375,8 @@ def freeze(
             )
         else:
             modifier_type = None
-        if nvnmd_weight is not None:
-            save_weight(sess, nvnmd_weight)  # nvnmd
+        if apumd_weight is not None:
+            save_weight(sess, apumd_weight)  # apumd
         freeze_graph(
             sess,
             input_graph_def,

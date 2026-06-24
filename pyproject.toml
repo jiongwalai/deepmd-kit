@@ -148,6 +148,7 @@ jax = [
 
 [tool.deepmd_build_backend.scripts]
 dp = "deepmd.main:main"
+apumd = "deepmd.apumd_main:main"
 
 [dependency-groups]
 dev = [
