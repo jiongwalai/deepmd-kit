@@ -2,10 +2,11 @@ name: Mirror to Gitee Repo
 
 on:
   push:
-    branches-ignore:
-      - "copilot/**"
-      - "dependabot/**"
-      - "pre-commit-ci-update-config"
+    branches:
+      - master
+      - APUMD
+    tags:
+      - "*"
   delete:
   create:
 
@@ -15,12 +16,23 @@ concurrency:
 
 jobs:
   git-mirror:
-    if: github.repository_owner == 'deepmodeling'
+    if: >-
+      github.repository == 'jiongwalai/deepmd-kit' && (
+        github.event_name == 'push' ||
+        (github.event_name == 'create' && (
+          (github.event.ref_type == 'branch' && (github.event.ref == 'master' || github.event.ref == 'APUMD')) ||
+          github.event.ref_type == 'tag'
+        )) ||
+        (github.event_name == 'delete' && (
+          (github.event.ref_type == 'branch' && (github.event.ref == 'master' || github.event.ref == 'APUMD')) ||
+          github.event.ref_type == 'tag'
+        ))
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: wearerequired/git-mirror-action@v1
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SYNC_GITEE_PRIVATE_KEY }}
         with:
-          source-repo: "https://github.com/deepmodeling/deepmd-kit.git"
-          destination-repo: "git@gitee.com:deepmodeling/deepmd-kit.git"
+          source-repo: "https://github.com/${{ github.repository }}.git"
+          destination-repo: "git@gitee.com:laijiongwa/deepmd-kit.git"
