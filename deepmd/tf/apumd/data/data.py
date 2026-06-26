@@ -290,7 +290,7 @@ jdata_deepmd_input_v0 = {
     },
     "apumd": {
         "version": 0,
-        "device": "vu9p",
+        "device": "vu13p",
         "max_nnei": 128,  # 128 or 256
         "net_size": 128,
         "config_file": "none",
@@ -359,7 +359,7 @@ jdata_deepmd_input_v1 = {
     },
     "apumd": {
         "version": 1,
-        "device": "vu9p",
+        "device": "vu13p",
         "max_nnei": 128,  # 128 or 256
         "net_size": 128,
         "config_file": "none",

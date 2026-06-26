@@ -45,7 +45,7 @@ class ApumdConfig:
 
     def __init__(self, jdata: dict) -> None:
         self.version = 0
-        self.device = "vu9p"
+        self.device = "vu13p"
         self.enable = False
         self.map = {}
         self.config = copy.deepcopy(jdata_config_v0)
@@ -421,4 +421,4 @@ class ApumdConfig:
 
 
 # global configuration for apumd
-apumd_cfg = ApumdConfig(jdata_deepmd_input_v0["apumd"])
+apumd_cfg = ApumdConfig(jdata_deepmd_input_v1_ni256["apumd"])

@@ -18,6 +18,7 @@ from deepmd.tf.env import (
 )
 from deepmd.tf.apumd.data.data import (
     jdata_deepmd_input_v0,
+    jdata_deepmd_input_v1_ni256,
 )
 from deepmd.tf.apumd.entrypoints.mapt import (
     mapt,
@@ -87,7 +88,7 @@ def _load_validated_apumd_input(fn: str) -> dict:
 
     jdata = copy.deepcopy(jdata)
     user_apumd_input = copy.deepcopy(jdata["apumd"])
-    apumd_input = copy.deepcopy(jdata_deepmd_input_v0["apumd"])
+    apumd_input = copy.deepcopy(jdata_deepmd_input_v1_ni256["apumd"])
     apumd_input.update(user_apumd_input)
 
     for key, fixed_value in APUMD_FIXED_SETTINGS.items():
